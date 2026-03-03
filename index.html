@@ -220,20 +220,31 @@
             }
         });
 
-        // ==========================================
-        // 5. 自訂相機控制邏輯 (含前後鏡頭切換)
+       // ==========================================
+        // 5. 自訂相機控制邏輯 (解鎖 4K 高畫質與安全降級)
         // ==========================================
         function initScanner() {
             html5QrCode = new Html5Qrcode("reader");
         }
 
-        // 預設先使用後鏡頭 (environment)，前鏡頭代號是 (user)
         let currentFacingMode = "environment"; 
 
-        function startScanner() {
-            // fps: 30 保持高靈敏度掃描
+        // 加入 use4K 參數，預設為 true (優先嘗試 4K)
+        function startScanner(use4K = true) {
             const config = { fps: 30 }; 
-            const cameraConfig = { facingMode: currentFacingMode };
+            let cameraConfig;
+            
+            if (use4K) {
+                // 請求 4K 超高畫質，拉長掃描距離
+                cameraConfig = { 
+                    facingMode: currentFacingMode,
+                    width: { ideal: 3840 },
+                    height: { ideal: 2160 }
+                };
+            } else {
+                // 備用方案：退回最安全的一般模式
+                cameraConfig = { facingMode: currentFacingMode };
+            }
             
             html5QrCode.start(cameraConfig, config, onScanSuccess)
             .then(() => {
@@ -242,21 +253,28 @@
                 document.getElementById('stopBtn').style.display = 'block';
             })
             .catch((err) => {
-                alert("無法開啟相機！\n系統回報錯誤：" + err);
+                if (use4K) {
+                    // 如果 4K 啟動失敗，不要跳錯誤，直接默默用一般模式再開一次！
+                    console.warn("高畫質模式不支援，自動降級為一般模式", err);
+                    startScanner(false); 
+                } else {
+                    alert("無法開啟相機！\n系統回報錯誤：" + err);
+                }
             });
         }
 
-        document.getElementById('startBtn').addEventListener('click', startScanner);
+        // 點擊「開啟相機」時，嘗試用 4K 啟動
+        document.getElementById('startBtn').addEventListener('click', () => startScanner(true));
 
-        // 點擊「切換前後鏡頭」按鈕的邏輯
         document.getElementById('switchBtn').addEventListener('click', () => {
             html5QrCode.stop().then(() => {
                 if (currentFacingMode === "environment") {
-                    currentFacingMode = "user"; // 換前鏡頭
+                    currentFacingMode = "user"; 
                 } else {
-                    currentFacingMode = "environment"; // 換後鏡頭
+                    currentFacingMode = "environment"; 
                 }
-                startScanner();
+                // 切換鏡頭後，一樣優先嘗試 4K 畫質
+                startScanner(true);
             });
         });
 
