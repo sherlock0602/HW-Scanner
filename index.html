@@ -226,11 +226,11 @@
             const config = { fps: 30 }; 
             
             // 升級 3：向手機/電腦請求高畫質 (理想是 1920x1080 解析度)
-            const cameraConstraints = {
-                facingMode: "environment", // 使用後鏡頭
-                width: { ideal: 1920 },    // 要求高畫質寬度
-                height: { ideal: 1080 }    // 要求高畫質高度
-            };
+        const cameraConstraints = {
+    facingMode: { ideal: "environment" }, // 加上 { ideal: ... } 代表優先使用後鏡頭，沒有就算了
+    width: { ideal: 1920 },    
+    height: { ideal: 1080 }    
+};
             
             html5QrCode.start(cameraConstraints, config, onScanSuccess)
             .then(() => {
