@@ -296,49 +296,46 @@
         // 預設優先使用後置鏡頭
         let currentFacingMode = "environment"; 
 
-        function startScanner() {
-            // 【關鍵修改 1】針對 iPadOS，後置鏡頭強烈建議加上 exact 強制指定
-            let cameraConfig;
-            if (currentFacingMode === "environment") {
-                cameraConfig = { facingMode: { exact: "environment" } };
-            } else {
-                cameraConfig = { facingMode: "user" };
-            }
+     async function startScanner() {
 
-            const idealConfig = { 
-                fps: 15, 
-                qrbox: { width: 250, height: 250 },
-                videoConstraints: {
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
-                }
-            }; 
+    const devices = await Html5Qrcode.getCameras();
 
-            try {
-                // 嘗試第一階段：帶有強制要求與解析度的開啟
-                html5QrCode.start(cameraConfig, idealConfig, onScanSuccess)
-                .then(() => {
-                    showCameraButtons();
-                })
-                .catch((err) => {
-                    console.warn("嚴格模式啟動失敗，啟動安全退回模式：", err);
-                    
-                    // 【關鍵修改 2】如果 exact 被 iPad 拒絕（OverconstrainedError），退回普通模式
-                    const fallbackCameraConfig = { facingMode: currentFacingMode };
-                    const safeConfig = { fps: 15, qrbox: { width: 250, height: 250 } };
-                    
-                    html5QrCode.start(fallbackCameraConfig, safeConfig, onScanSuccess)
-                    .then(() => {
-                        showCameraButtons();
-                    })
-                    .catch(err2 => {
-                        alert("無法開啟相機，請確認 Safari 的相機權限是否已開啟！\n錯誤：" + err2);
-                    });
-                });
-            } catch (error) {
-                alert("啟動參數發生錯誤：" + error);
-            }
-        }
+    if (!devices || devices.length === 0) {
+        alert("找不到相機設備");
+        return;
+    }
+
+    let cameraId;
+
+    if (currentFacingMode === "environment") {
+
+        // 優先找有 back / rear / environment 字樣的鏡頭
+        const backCamera = devices.find(device =>
+            device.label.toLowerCase().includes("back") ||
+            device.label.toLowerCase().includes("rear") ||
+            device.label.toLowerCase().includes("environment")
+        );
+
+        cameraId = backCamera ? backCamera.id : devices[devices.length - 1].id;
+
+    } else {
+        // 前鏡頭通常在第一個
+        cameraId = devices[0].id;
+    }
+
+    html5QrCode.start(
+        cameraId,
+        {
+            fps: 15,
+            qrbox: { width: 250, height: 250 }
+        },
+        onScanSuccess
+    ).then(() => {
+        showCameraButtons();
+    }).catch(err => {
+        alert("啟動相機失敗：" + err);
+    });
+}
 
         function showCameraButtons() {
             document.getElementById('startBtn').style.display = 'none';
