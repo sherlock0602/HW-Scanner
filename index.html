@@ -16,9 +16,9 @@
         h2 { text-align: center; color: #333; }
         
         /* 自訂相機按鈕樣式 */
-        .camera-controls { display: flex; gap: 10px; margin-bottom: 20px; }
+        .camera-controls { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
         .btn {
-            flex: 1;
+            flex: 1 1 calc(50% - 10px);
             padding: 12px;
             font-size: 16px;
             font-weight: bold;
@@ -28,14 +28,19 @@
             cursor: pointer;
             box-shadow: 0 2px 4px rgba(0,0,0,0.2);
             transition: background-color 0.3s;
+            white-space: nowrap;
         }
-        .btn-start { background-color: #2ecc71; }
+        .btn-start { background-color: #2ecc71; flex-basis: 100%; }
         .btn-start:hover { background-color: #27ae60; }
         .btn-switch { background-color: #f39c12; }
         .btn-switch:hover { background-color: #e67e22; }
         .btn-stop { background-color: #95a5a6; display: none; }
         .btn-stop:hover { background-color: #7f8c8d; }
         
+        /* 音效按鈕樣式 */
+        .btn-sound { background-color: #8e44ad; flex-basis: 100%; }
+        .btn-sound.sound-off { background-color: #7f8c8d; }
+
         /* 相機容器與浮動提示框樣式 */
         .scanner-container {
             position: relative; 
@@ -69,54 +74,33 @@
             box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         }
 
-        .scan-toast.show-success {
-            opacity: 1;
-            background-color: rgba(46, 204, 113, 0.95); 
-        }
-
-        .scan-toast.show-duplicate {
-            opacity: 1;
-            background-color: rgba(241, 196, 15, 0.95); 
-            color: #333;
-        }
+        .scan-toast.show-success { opacity: 1; background-color: rgba(46, 204, 113, 0.95); }
+        .scan-toast.show-duplicate { opacity: 1; background-color: rgba(241, 196, 15, 0.95); color: #333; }
         
         /* 歸零按鈕的樣式 */
         .reset-btn {
-            background-color: #ff4d4d;
-            color: white;
-            padding: 12px 15px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            margin-bottom: 20px;
-            font-size: 16px;
-            font-weight: bold;
-            width: 100%;
-            display: block;
-            box-shadow: 0 2px 4px rgba(255, 77, 77, 0.3);
-            transition: background-color 0.3s;
+            background-color: #ff4d4d; color: white; padding: 12px 15px; border: none;
+            border-radius: 8px; cursor: pointer; margin-bottom: 20px; font-size: 16px;
+            font-weight: bold; width: 100%; display: block; box-shadow: 0 2px 4px rgba(255, 77, 77, 0.3);
         }
         .reset-btn:hover { background-color: #e60000; }
 
         /* 資料呈現區域樣式 */
         .data-container { margin-top: 20px; }
-        .date-section { background: white; border: 1px solid #ddd; padding: 15px; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .date-section { background: white; border: 1px solid #ddd; padding: 15px; margin-bottom: 15px; border-radius: 8px; }
         .date-section h3 { margin-top: 0; color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; }
         .subject-section { background: #f9f9f9; border-left: 4px solid #3498db; padding: 12px; margin-top: 15px; border-radius: 4px; }
         .subject-section h4 { margin: 0 0 10px 0; color: #34495e; }
         .missing-list { color: #e74c3c; font-weight: bold; }
 
         /* 設定區塊樣式 */
-        .settings-container { background: white; padding: 15px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .settings-container { background: white; padding: 15px; margin-bottom: 20px; border-radius: 8px; }
         .settings-container h3 { margin-top: 0; color: #2c3e50; font-size: 18px; margin-bottom: 15px;}
         .settings-input-group { display: flex; gap: 10px; margin-bottom: 15px; }
         .settings-input-group input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; min-width: 0; }
-        .settings-input-group button { background-color: #3498db; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 16px; white-space: nowrap; }
-        .settings-input-group button:hover { background-color: #2980b9; }
+        .settings-input-group button { background-color: #3498db; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 16px; }
         .class-tag { background: #ecf0f1; padding: 8px 12px; border-radius: 20px; font-size: 14px; display: inline-flex; align-items: center; gap: 8px; color: #333; font-weight: 500;}
         .class-tag span { color: #e74c3c; cursor: pointer; font-weight: bold; font-size: 18px; line-height: 1; padding-bottom: 2px; }
-        .class-tag span:hover { color: #c0392b; }
-        #classListDisplay { display: flex; flex-wrap: wrap; gap: 10px; }
     </style>
 </head>
 <body>
@@ -134,6 +118,8 @@
     </div>
 
     <div class="camera-controls">
+        <button id="soundToggleBtn" class="btn btn-sound">🔊 掃描音效：開啟</button>
+        
         <button id="startBtn" class="btn btn-start">開啟相機掃描</button>
         <button id="switchBtn" class="btn btn-switch" style="display: none;">切換前後鏡頭</button>
         <button id="stopBtn" class="btn btn-stop" style="display: none;">暫停相機</button>
@@ -159,6 +145,10 @@
         let html5QrCode; 
         let toastTimeout; 
 
+        // 音效相關變數
+        let isSoundEnabled = localStorage.getItem('soundEnabled') !== 'false'; // 預設為開啟
+        let audioCtx;
+
         function getTodayDate() {
             const today = new Date();
             today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
@@ -166,46 +156,84 @@
         }
 
         // ==========================================
-        // 2. 顯示浮動提示的功能 (Toast)
+        // 2. 音效產生器與控制 (Web Audio API)
+        // ==========================================
+        // 初始化音效 (iPad Safari 需要透過點擊事件來解鎖音效權限)
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playBeep() {
+            if (!isSoundEnabled || !audioCtx) return;
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            oscillator.type = 'sine'; // 乾淨的正弦波聲音
+            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // 頻率，880Hz 比較清脆
+            
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); // 音量
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1); // 聲音短促淡出
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.1);
+        }
+
+        // 更新音效按鈕外觀
+        const soundBtn = document.getElementById('soundToggleBtn');
+        function updateSoundBtnUI() {
+            if (isSoundEnabled) {
+                soundBtn.innerText = '🔊 掃描音效：開啟';
+                soundBtn.classList.remove('sound-off');
+            } else {
+                soundBtn.innerText = '🔇 掃描音效：關閉';
+                soundBtn.classList.add('sound-off');
+            }
+        }
+        
+        soundBtn.addEventListener('click', () => {
+            initAudio(); // 確保解鎖 iOS 音效權限
+            isSoundEnabled = !isSoundEnabled;
+            localStorage.setItem('soundEnabled', isSoundEnabled);
+            updateSoundBtnUI();
+            if (isSoundEnabled) playBeep(); // 開啟時測試響一聲
+        });
+
+        // ==========================================
+        // 3. 顯示浮動提示的功能 (Toast)
         // ==========================================
         function showToast(message, type = 'success') {
             const toast = document.getElementById('scanToast');
             toast.innerText = message;
-            
             toast.classList.remove('show-success', 'show-duplicate');
-            
-            if(type === 'success') {
-                toast.classList.add('show-success');
-            } else {
-                toast.classList.add('show-duplicate');
-            }
+            if(type === 'success') toast.classList.add('show-success');
+            else toast.classList.add('show-duplicate');
             
             clearTimeout(toastTimeout);
-            
             toastTimeout = setTimeout(() => {
                 toast.classList.remove('show-success', 'show-duplicate');
             }, 2000);
         }
 
         // ==========================================
-        // 3. 存檔與資料管理功能
+        // 4. 存檔與資料管理功能
         // ==========================================
-        function saveData() {
-            localStorage.setItem('homeworkData', JSON.stringify(homeworkData));
-        }
-
+        function saveData() { localStorage.setItem('homeworkData', JSON.stringify(homeworkData)); }
         function loadData() {
             const savedData = localStorage.getItem('homeworkData');
             if (savedData) {
                 homeworkData = JSON.parse(savedData);
                 const today = getTodayDate();
                 let dataChanged = false;
-
                 for (const dateKey in homeworkData) {
-                    if (dateKey !== today) {
-                        delete homeworkData[dateKey];
-                        dataChanged = true;
-                    }
+                    if (dateKey !== today) { delete homeworkData[dateKey]; dataChanged = true; }
                 }
                 if (dataChanged) saveData();
             }
@@ -213,199 +241,133 @@
         }
 
         document.getElementById('resetBtn').addEventListener('click', () => {
-            const userConfirmed = confirm("確定要全部重新來過嗎？這將會清空今天所有的掃描紀錄喔！");
-            if (userConfirmed) {
-                homeworkData = {}; 
-                localStorage.removeItem('homeworkData'); 
-                renderData(); 
-                alert("資料已全部歸零！");
+            if (confirm("確定要全部重新來過嗎？這將會清空今天所有的掃描紀錄喔！")) {
+                homeworkData = {}; localStorage.removeItem('homeworkData'); 
+                renderData(); alert("資料已全部歸零！");
             }
         });
 
         // ==========================================
-        // 4. 螢幕防休眠功能
+        // 5. 螢幕防休眠功能
         // ==========================================
         async function requestWakeLock() {
-            try {
-                wakeLock = await navigator.wakeLock.request('screen');
-            } catch (err) {
-                console.error(`無法鎖定螢幕: ${err.message}`);
-            }
+            try { wakeLock = await navigator.wakeLock.request('screen'); } 
+            catch (err) { console.error(`無法鎖定螢幕: ${err.message}`); }
         }
-
         document.addEventListener('visibilitychange', async () => {
-            if (wakeLock !== null && document.visibilityState === 'visible') {
-                await requestWakeLock();
-            }
+            if (wakeLock !== null && document.visibilityState === 'visible') await requestWakeLock();
         });
 
         // ==========================================
-        // 5. 班級設定邏輯
+        // 6. 班級設定邏輯
         // ==========================================
         function updateClassListDisplay() {
             const container = document.getElementById('classListDisplay');
             container.innerHTML = '';
-            
             for (const [className, count] of Object.entries(classConfig)) {
                 const tag = document.createElement('div');
                 tag.className = 'class-tag';
-                tag.innerHTML = `
-                    ${className} (${count}人)
-                    <span onclick="removeClass('${className}')">&times;</span>
-                `;
+                tag.innerHTML = `${className} (${count}人) <span onclick="removeClass('${className}')">&times;</span>`;
                 container.appendChild(tag);
             }
         }
-
         window.removeClass = function(className) {
             if(confirm(`確定要刪除 ${className} 的設定嗎？`)) {
                 delete classConfig[className];
                 localStorage.setItem('customClassConfig', JSON.stringify(classConfig));
-                updateClassListDisplay();
-                renderData(); 
+                updateClassListDisplay(); renderData(); 
             }
         };
-
         document.getElementById('addClassBtn').addEventListener('click', () => {
             const className = document.getElementById('inputClassName').value.trim();
             const count = parseInt(document.getElementById('inputStudentCount').value, 10);
-            
-            if (!className || isNaN(count) || count <= 0) {
-                alert('請輸入有效的班級名稱與大於 0 的人數！');
-                return;
-            }
-            
+            if (!className || isNaN(count) || count <= 0) { alert('請輸入有效的班級名稱與大於 0 的人數！'); return; }
             classConfig[className] = count;
             localStorage.setItem('customClassConfig', JSON.stringify(classConfig));
-            
-            document.getElementById('inputClassName').value = '';
-            document.getElementById('inputStudentCount').value = '';
-            
-            updateClassListDisplay();
-            renderData(); 
+            document.getElementById('inputClassName').value = ''; document.getElementById('inputStudentCount').value = '';
+            updateClassListDisplay(); renderData(); 
         });
 
         // ==========================================
-        // 6. 自訂相機控制邏輯 (移除解析度限制版)
+        // 7. 自訂相機控制邏輯 (移除解析度限制版 + 動態掃描框)
         // ==========================================
-        function initScanner() {
-            html5QrCode = new Html5Qrcode("reader");
-        }
-
+        function initScanner() { html5QrCode = new Html5Qrcode("reader"); }
         let currentFacingMode = "environment"; 
 
         function startScanner() {
-            // 強制指定鏡頭方向，完全拿掉解析度限制
             let cameraConfig;
-            if (currentFacingMode === "environment") {
-                cameraConfig = { facingMode: { exact: "environment" } };
-            } else {
-                cameraConfig = { facingMode: "user" };
-            }
+            if (currentFacingMode === "environment") cameraConfig = { facingMode: { exact: "environment" } };
+            else cameraConfig = { facingMode: "user" };
 
-            // 【主要修改這裡】讓掃描框動態放大
+            // 讓掃描框動態適應畫面大小，佔比約 85%
             const simpleConfig = { 
                 fps: 15, 
                 qrbox: function(viewfinderWidth, viewfinderHeight) {
-                    // 取畫面寬度或高度的 85%（以短邊為主，確保框框不會超出螢幕）
                     const minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
                     const size = Math.floor(minEdgeSize * 0.85);
-                    
-                    // 如果你覺得正方形不好掃條碼，也可以改成扁長方形：
-                    // return { width: Math.floor(viewfinderWidth * 0.85), height: Math.floor(viewfinderHeight * 0.4) };
-                    
                     return { width: size, height: size };
                 }
             }; 
 
             try {
-                // 嘗試開啟
                 html5QrCode.start(cameraConfig, simpleConfig, onScanSuccess)
-                .then(() => {
-                    showCameraButtons();
-                })
+                .then(() => { showCameraButtons(); })
                 .catch((err) => {
                     console.warn("強制指定鏡頭失敗，啟動備用模式：", err);
-                    
-                    // 備用模式：連 exact 都拿掉，只求能開
                     const fallbackConfig = { facingMode: currentFacingMode };
                     html5QrCode.start(fallbackConfig, simpleConfig, onScanSuccess)
-                    .then(() => {
-                        showCameraButtons();
-                    })
-                    .catch(err2 => {
-                        alert("無法開啟相機，請確認設備權限！\n錯誤：" + err2);
-                    });
+                    .then(() => { showCameraButtons(); })
+                    .catch(err2 => { alert("無法開啟相機，請確認設備權限！\n錯誤：" + err2); });
                 });
-            } catch (error) {
-                alert("啟動發生錯誤：" + error);
-            }
+            } catch (error) { alert("啟動發生錯誤：" + error); }
         }
 
         function showCameraButtons() {
             document.getElementById('startBtn').style.display = 'none';
+            document.getElementById('soundToggleBtn').style.display = 'none'; // 掃描時隱藏音效設定按鈕節省空間
             document.getElementById('switchBtn').style.display = 'block'; 
             document.getElementById('stopBtn').style.display = 'block';
         }
 
-        document.getElementById('startBtn').addEventListener('click', startScanner);
+        document.getElementById('startBtn').addEventListener('click', () => {
+            initAudio(); // 確保解鎖音效權限
+            startScanner();
+        });
 
-        // 切換鏡頭按鈕：加入延遲緩衝，避免 iPad 硬體資源卡住
         document.getElementById('switchBtn').addEventListener('click', () => {
-            document.getElementById('switchBtn').disabled = true; // 防連點
-            
+            document.getElementById('switchBtn').disabled = true; 
             html5QrCode.stop().then(() => {
                 currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
-                
-                // 給 iPadOS 300 毫秒的時間釋放硬體資源再重啟
                 setTimeout(() => {
                     startScanner();
                     document.getElementById('switchBtn').disabled = false;
                 }, 300);
-                
-            }).catch(err => {
-                console.log("切換鏡頭失敗", err);
-                document.getElementById('switchBtn').disabled = false;
-            });
+            }).catch(err => { console.log("切換鏡頭失敗", err); document.getElementById('switchBtn').disabled = false; });
         });
 
         document.getElementById('stopBtn').addEventListener('click', () => {
             html5QrCode.stop().then(() => {
                 document.getElementById('startBtn').style.display = 'block';
+                document.getElementById('soundToggleBtn').style.display = 'block'; // 停止掃描時顯示音效設定
                 document.getElementById('switchBtn').style.display = 'none'; 
                 document.getElementById('stopBtn').style.display = 'none';
             }).catch(err => console.log("關閉相機失敗", err));
         });
 
         // ==========================================
-        // 7. 掃描邏輯與畫面渲染
+        // 8. 掃描邏輯與畫面渲染
         // ==========================================
         function onScanSuccess(decodedText) {
             const currentTime = new Date().getTime();
-
-            if (decodedText === lastScannedText && (currentTime - lastScannedTime) < 1500) {
-                return;
-            }
-
+            if (decodedText === lastScannedText && (currentTime - lastScannedTime) < 1500) return;
+            
             lastScannedText = decodedText;
             lastScannedTime = currentTime;
 
             const parts = decodedText.split('-');
-            if (parts.length !== 3) {
-                showToast('⚠️ 條碼格式錯誤', 'duplicate');
-                return; 
-            }
+            if (parts.length !== 3) { showToast('⚠️ 條碼格式錯誤', 'duplicate'); return; }
 
-            const subjectMap = {
-                "BK": "聯絡簿",
-                "CH": "國語",
-                "MA": "數學",
-                "SO": "社會",
-                "SC": "自然",
-                "EN": "英文",
-                "oa?": "聯絡簿" 
-            };
-
+            const subjectMap = { "BK": "聯絡簿", "CH": "國語", "MA": "數學", "SO": "社會", "SC": "自然", "EN": "英文", "oa?": "聯絡簿" };
             const className = parts[0];
             const rawSubject = parts[1];
             const subject = subjectMap[rawSubject] || rawSubject; 
@@ -422,10 +384,11 @@
             if (!homeworkData[today][categoryKey].includes(seatNumber)) {
                 homeworkData[today][categoryKey].push(seatNumber);
                 homeworkData[today][categoryKey].sort((a, b) => a - b);
-                
                 saveData(); 
                 renderData(); 
                 
+                // 【觸發音效】
+                playBeep();
                 showToast(`✅ 成功：${className} ${subject} ${seatNumber}號`, 'success');
             } else {
                 showToast(`⚠️ 已登記過：${seatNumber}號`, 'duplicate');
@@ -435,32 +398,20 @@
         function renderData() {
             const resultDiv = document.getElementById('result');
             resultDiv.innerHTML = '';
-
             for (const [date, categories] of Object.entries(homeworkData)) {
                 let dateHtml = `<div class="date-section"><h3>日期：${date}</h3>`;
-                
                 for (const [category, seatNumbers] of Object.entries(categories)) {
                     const className = category.split('-')[0];
-                    
-                    let totalStudents = classConfig[className];
-                    if (!totalStudents) {
-                        totalStudents = Math.max(30, ...seatNumbers); 
-                    }
-
+                    let totalStudents = classConfig[className] || Math.max(30, ...seatNumbers); 
                     let missing = [];
-                    for(let i = 1; i <= totalStudents; i++) {
-                        if(!seatNumbers.includes(i)) missing.push(i);
-                    }
-
+                    for(let i = 1; i <= totalStudents; i++) { if(!seatNumbers.includes(i)) missing.push(i); }
                     const warningHtml = !classConfig[className] ? `<br><span style="color:#e67e22; font-size:13px; font-weight:normal;">(未設定總人數，暫以 ${totalStudents} 人計算)</span>` : '';
-
                     dateHtml += `
                         <div class="subject-section">
                             <h4>${category} ${warningHtml}</h4>
                             <p><strong>已交 (${seatNumbers.length}/${totalStudents}人)：</strong><br> ${seatNumbers.join(', ')}</p>
                             <p class="missing-list">未交 (${missing.length}人)：<br> ${missing.join(', ')}</p>
-                        </div>
-                    `;
+                        </div>`;
                 }
                 dateHtml += `</div>`;
                 resultDiv.innerHTML += dateHtml;
@@ -468,8 +419,9 @@
         }
 
         // ==========================================
-        // 8. 系統初始化
+        // 9. 系統初始化
         // ==========================================
+        updateSoundBtnUI(); 
         updateClassListDisplay(); 
         loadData();
         requestWakeLock();
