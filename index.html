@@ -15,11 +15,8 @@
         }
         h2 { text-align: center; color: #333; }
         
-        /* 掃描器與自訂按鈕區域 */
-        #reader { width: 100%; margin-bottom: 15px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .camera-controls { display: flex; gap: 10px; margin-bottom: 20px; }
-        
         /* 自訂相機按鈕樣式 */
+        .camera-controls { display: flex; gap: 10px; margin-bottom: 20px; }
         .btn {
             flex: 1;
             padding: 12px;
@@ -34,8 +31,56 @@
         }
         .btn-start { background-color: #2ecc71; }
         .btn-start:hover { background-color: #27ae60; }
-        .btn-stop { background-color: #95a5a6; display: none; /* 預設隱藏停止按鈕 */ }
+        .btn-stop { background-color: #95a5a6; display: none; }
         .btn-stop:hover { background-color: #7f8c8d; }
+        
+        /* ==========================================
+           新增：相機容器與浮動提示框樣式
+           ========================================== */
+        .scanner-container {
+            position: relative; /* 讓裡面的浮動視窗以此為基準對齊 */
+            width: 100%;
+            margin-bottom: 15px;
+        }
+        
+        #reader { 
+            width: 100%; 
+            background: white; 
+            border-radius: 8px; 
+            overflow: hidden; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
+        }
+
+        .scan-toast {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%); /* 讓提示框置中 */
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-size: 16px;
+            font-weight: bold;
+            color: white;
+            z-index: 10;
+            opacity: 0; /* 預設完全透明隱藏 */
+            pointer-events: none; /* 讓滑鼠/手指可以穿透它點擊 */
+            transition: all 0.3s ease; /* 淡入淡出的動畫效果 */
+            white-space: nowrap;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        /* 掃描成功的綠色樣式 */
+        .scan-toast.show-success {
+            opacity: 1;
+            background-color: rgba(46, 204, 113, 0.95); 
+        }
+
+        /* 重複掃描的黃色樣式 */
+        .scan-toast.show-duplicate {
+            opacity: 1;
+            background-color: rgba(241, 196, 15, 0.95); 
+            color: #333;
+        }
         
         /* 歸零按鈕的樣式 */
         .reset-btn {
@@ -73,10 +118,12 @@
         <button id="stopBtn" class="btn btn-stop">暫停相機</button>
     </div>
 
-    <div id="reader"></div>
+    <div class="scanner-container">
+        <div id="reader"></div>
+        <div id="scanToast" class="scan-toast"></div>
+    </div>
 
     <button id="resetBtn" class="reset-btn">清空今日所有掃描資料</button> 
-    
     <div id="result" class="data-container"></div>
 
     <script>
@@ -91,7 +138,8 @@
         let lastScannedText = "";
         let lastScannedTime = 0;
         let wakeLock = null;
-        let html5QrCode; // 宣告核心掃描器變數
+        let html5QrCode; 
+        let toastTimeout; // 控制浮動提示消失的計時器
 
         function getTodayDate() {
             const today = new Date();
@@ -100,7 +148,33 @@
         }
 
         // ==========================================
-        // 2. 存檔與資料管理功能
+        // 2. 顯示浮動提示的功能 (Toast)
+        // ==========================================
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('scanToast');
+            toast.innerText = message;
+            
+            // 先清除之前的動畫狀態
+            toast.classList.remove('show-success', 'show-duplicate');
+            
+            // 依照類型加入對應的顏色
+            if(type === 'success') {
+                toast.classList.add('show-success');
+            } else {
+                toast.classList.add('show-duplicate');
+            }
+            
+            // 如果原本有倒數計時，先取消掉（避免連續掃描時提早消失）
+            clearTimeout(toastTimeout);
+            
+            // 設定 2 秒後自動隱藏
+            toastTimeout = setTimeout(() => {
+                toast.classList.remove('show-success', 'show-duplicate');
+            }, 2000);
+        }
+
+        // ==========================================
+        // 3. 存檔與資料管理功能
         // ==========================================
         function saveData() {
             localStorage.setItem('homeworkData', JSON.stringify(homeworkData));
@@ -135,7 +209,7 @@
         });
 
         // ==========================================
-        // 3. 螢幕防休眠功能
+        // 4. 螢幕防休眠功能
         // ==========================================
         async function requestWakeLock() {
             try {
@@ -152,20 +226,17 @@
         });
 
         // ==========================================
-        // 4. 自訂相機控制邏輯 (取代原本的英文介面)
+        // 5. 自訂相機控制邏輯
         // ==========================================
         function initScanner() {
-            // 使用核心引擎 Html5Qrcode，而不是懶人包 Html5QrcodeScanner
             html5QrCode = new Html5Qrcode("reader");
         }
 
         document.getElementById('startBtn').addEventListener('click', () => {
-            // 設定掃描參數：使用後置鏡頭(environment)
             const config = { fps: 10, qrbox: { width: 250, height: 250 } };
             
             html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
             .then(() => {
-                // 成功開啟相機後，切換按鈕顯示狀態
                 document.getElementById('startBtn').style.display = 'none';
                 document.getElementById('stopBtn').style.display = 'block';
             })
@@ -176,18 +247,18 @@
 
         document.getElementById('stopBtn').addEventListener('click', () => {
             html5QrCode.stop().then(() => {
-                // 成功關閉相機後，切換按鈕顯示狀態
                 document.getElementById('startBtn').style.display = 'block';
                 document.getElementById('stopBtn').style.display = 'none';
             });
         });
 
         // ==========================================
-        // 5. 掃描邏輯與畫面渲染
+        // 6. 掃描邏輯與畫面渲染
         // ==========================================
         function onScanSuccess(decodedText) {
             const currentTime = new Date().getTime();
 
+            // 防重複：同一個條碼 3 秒內一直停在畫面上，直接忽略不處理
             if (decodedText === lastScannedText && (currentTime - lastScannedTime) < 3000) {
                 return;
             }
@@ -202,7 +273,6 @@
             const subject = parts[1];
             const seatNumber = parseInt(parts[2], 10);
             
-            // 如果解析出來不是數字，就中斷執行
             if(isNaN(seatNumber)) return; 
 
             const today = getTodayDate();
@@ -211,12 +281,19 @@
             if (!homeworkData[today]) homeworkData[today] = {};
             if (!homeworkData[today][categoryKey]) homeworkData[today][categoryKey] = [];
 
+            // 判斷該座號是否為「新加入」
             if (!homeworkData[today][categoryKey].includes(seatNumber)) {
                 homeworkData[today][categoryKey].push(seatNumber);
                 homeworkData[today][categoryKey].sort((a, b) => a - b);
                 
                 saveData(); 
                 renderData(); 
+                
+                // 觸發綠色成功提示
+                showToast(`✅ 成功：${className} ${subject} ${seatNumber}號`, 'success');
+            } else {
+                // 如果陣列裡已經有這個號碼了，觸發黃色重複提示
+                showToast(`⚠️ 已登記過：${seatNumber}號`, 'duplicate');
             }
         }
 
@@ -250,7 +327,7 @@
         }
 
         // ==========================================
-        // 6. 系統初始化
+        // 7. 系統初始化
         // ==========================================
         loadData();
         requestWakeLock();
