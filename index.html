@@ -15,7 +15,6 @@
         }
         h2 { text-align: center; color: #333; }
         
-        /* 自訂相機按鈕樣式 */
         .camera-controls { display: flex; gap: 10px; margin-bottom: 20px; }
         .btn {
             flex: 1;
@@ -36,7 +35,6 @@
         .btn-stop { background-color: #95a5a6; display: none; }
         .btn-stop:hover { background-color: #7f8c8d; }
         
-        /* 相機容器與浮動提示框樣式 */
         .scanner-container {
             position: relative; 
             width: 100%;
@@ -80,7 +78,6 @@
             color: #333;
         }
         
-        /* 歸零按鈕的樣式 */
         .reset-btn {
             background-color: #ff4d4d;
             color: white;
@@ -98,7 +95,6 @@
         }
         .reset-btn:hover { background-color: #e60000; }
 
-        /* 資料呈現區域樣式 */
         .data-container { margin-top: 20px; }
         .date-section { background: white; border: 1px solid #ddd; padding: 15px; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
         .date-section h3 { margin-top: 0; color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; }
@@ -162,7 +158,6 @@
             }
             
             clearTimeout(toastTimeout);
-            
             toastTimeout = setTimeout(() => {
                 toast.classList.remove('show-success', 'show-duplicate');
             }, 2000);
@@ -176,19 +171,24 @@
         }
 
         function loadData() {
-            const savedData = localStorage.getItem('homeworkData');
-            if (savedData) {
-                homeworkData = JSON.parse(savedData);
-                const today = getTodayDate();
-                let dataChanged = false;
+            try {
+                const savedData = localStorage.getItem('homeworkData');
+                if (savedData) {
+                    homeworkData = JSON.parse(savedData);
+                    const today = getTodayDate();
+                    let dataChanged = false;
 
-                for (const dateKey in homeworkData) {
-                    if (dateKey !== today) {
-                        delete homeworkData[dateKey];
-                        dataChanged = true;
+                    for (const dateKey in homeworkData) {
+                        if (dateKey !== today) {
+                            delete homeworkData[dateKey];
+                            dataChanged = true;
+                        }
                     }
+                    if (dataChanged) saveData();
                 }
-                if (dataChanged) saveData();
+            } catch (e) {
+                console.error("讀取存檔失敗，還原為空狀態", e);
+                homeworkData = {};
             }
             renderData();
         }
@@ -210,7 +210,7 @@
             try {
                 wakeLock = await navigator.wakeLock.request('screen');
             } catch (err) {
-                console.error(`無法鎖定螢幕: ${err.message}`);
+                console.log(`無法鎖定螢幕: ${err.message}`);
             }
         }
 
@@ -220,8 +220,8 @@
             }
         });
 
-       // ==========================================
-        // 5. 自訂相機控制邏輯 (解鎖 4K 高畫質與安全降級)
+        // ==========================================
+        // 5. 終極安全版相機控制邏輯
         // ==========================================
         function initScanner() {
             html5QrCode = new Html5Qrcode("reader");
@@ -229,42 +229,42 @@
 
         let currentFacingMode = "environment"; 
 
-        // 加入 use4K 參數，預設為 true (優先嘗試 4K)
-        function startScanner(use4K = true) {
-            const config = { fps: 30 }; 
-            let cameraConfig;
-            
-            if (use4K) {
-                // 請求 4K 超高畫質，拉長掃描距離
-                cameraConfig = { 
-                    facingMode: currentFacingMode,
-                    width: { ideal: 3840 },
-                    height: { ideal: 2160 }
-                };
-            } else {
-                // 備用方案：退回最安全的一般模式
-                cameraConfig = { facingMode: currentFacingMode };
+        function startScanner() {
+            // 防呆機制：如果核心沒載入，提示使用者
+            if (!html5QrCode) {
+                alert("掃描器尚未準備好，請重新整理網頁！");
+                return;
             }
-            
-            html5QrCode.start(cameraConfig, config, onScanSuccess)
-            .then(() => {
-                document.getElementById('startBtn').style.display = 'none';
-                document.getElementById('switchBtn').style.display = 'block'; 
-                document.getElementById('stopBtn').style.display = 'block';
-            })
-            .catch((err) => {
-                if (use4K) {
-                    // 如果 4K 啟動失敗，不要跳錯誤，直接默默用一般模式再開一次！
-                    console.warn("高畫質模式不支援，自動降級為一般模式", err);
-                    startScanner(false); 
-                } else {
-                    alert("無法開啟相機！\n系統回報錯誤：" + err);
+
+            // 安全高畫質設定：要求 ideal (理想值)，即使達不到也不會報錯
+            // 1920x1080 (1080p) 已經能讓掃描距離拉長一倍以上
+            const config = { 
+                fps: 30,
+                videoConstraints: {
+                    facingMode: currentFacingMode,
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
                 }
-            });
+            };
+            
+            const cameraConfig = { facingMode: currentFacingMode };
+            
+            try {
+                html5QrCode.start(cameraConfig, config, onScanSuccess)
+                .then(() => {
+                    document.getElementById('startBtn').style.display = 'none';
+                    document.getElementById('switchBtn').style.display = 'block'; 
+                    document.getElementById('stopBtn').style.display = 'block';
+                })
+                .catch((err) => {
+                    alert("無法開啟相機！\n請確認瀏覽器權限，錯誤代碼：" + err);
+                });
+            } catch (syncErr) {
+                alert("系統同步錯誤：\n" + syncErr);
+            }
         }
 
-        // 點擊「開啟相機」時，嘗試用 4K 啟動
-        document.getElementById('startBtn').addEventListener('click', () => startScanner(true));
+        document.getElementById('startBtn').addEventListener('click', startScanner);
 
         document.getElementById('switchBtn').addEventListener('click', () => {
             html5QrCode.stop().then(() => {
@@ -273,8 +273,7 @@
                 } else {
                     currentFacingMode = "environment"; 
                 }
-                // 切換鏡頭後，一樣優先嘗試 4K 畫質
-                startScanner(true);
+                startScanner();
             });
         });
 
@@ -292,7 +291,6 @@
         function onScanSuccess(decodedText) {
             const currentTime = new Date().getTime();
 
-            // 防重複：1.5 秒內不重複掃描同一個條碼
             if (decodedText === lastScannedText && (currentTime - lastScannedTime) < 1500) {
                 return;
             }
@@ -303,7 +301,6 @@
             const parts = decodedText.split('-');
             if (parts.length !== 3) return; 
 
-            // 科目英文代號與防亂碼對照表
             const subjectMap = {
                 "BK": "聯絡簿",
                 "CH": "國語",
@@ -311,14 +308,12 @@
                 "SO": "社會",
                 "SC": "自然",
                 "EN": "英文",
-                "oa?": "聯絡簿" // 解決你之前遇到的亂碼問題
+                "oa?": "聯絡簿" 
             };
 
             const className = parts[0];
             const rawSubject = parts[1];
-            
             const subject = subjectMap[rawSubject] || rawSubject; 
-            
             const seatNumber = parseInt(parts[2], 10);
             
             if(isNaN(seatNumber)) return; 
@@ -372,11 +367,15 @@
         }
 
         // ==========================================
-        // 7. 系統初始化
+        // 7. 系統初始化 (確保執行順序正確)
         // ==========================================
-        loadData();
-        requestWakeLock();
-        initScanner();
+        try {
+            initScanner();      // 第一步：先建立掃描器物件 (防當機關鍵)
+            loadData();         // 第二步：讀取歷史資料
+            requestWakeLock();  // 第三步：啟動防休眠
+        } catch (e) {
+            alert("系統載入時發生錯誤：" + e);
+        }
 
     </script>
 </body>
