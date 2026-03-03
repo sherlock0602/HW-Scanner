@@ -289,50 +289,93 @@
         });
 
         // ==========================================
-        // 6. 自訂相機控制邏輯 (含前後鏡頭切換與高解析度)
+        // 6. 自訂相機控制邏輯 (支援多鏡頭精準切換)
         // ==========================================
         function initScanner() {
             html5QrCode = new Html5Qrcode("reader");
         }
 
-        let currentFacingMode = "environment"; 
+        let availableCameras = [];
+        let currentCameraIndex = 0;
+        let isUsingFacingModeFallback = false;
+        let currentFacingMode = "environment";
 
-function startScanner() {
-            // 修正：將高解析度要求 (videoConstraints) 移到 config 裡面
-            const config = { 
+        function startScanner() {
+            // 嘗試取得裝置上所有的實體相機鏡頭
+            Html5Qrcode.getCameras().then(devices => {
+                if (devices && devices.length > 0) {
+                    availableCameras = devices;
+                    isUsingFacingModeFallback = false;
+                    
+                    // 第一次啟動時，自動尋找名稱中包含 "back"、"後" 或 "environment" 的鏡頭
+                    if (currentCameraIndex === 0) {
+                        const backCamIndex = devices.findIndex(c => 
+                            c.label.toLowerCase().includes('back') || 
+                            c.label.toLowerCase().includes('後') ||
+                            c.label.toLowerCase().includes('environment')
+                        );
+                        // 如果有找到後置鏡頭，就將它設為預設
+                        if (backCamIndex !== -1) {
+                            currentCameraIndex = backCamIndex;
+                        }
+                    }
+                    startWithCameraId(availableCameras[currentCameraIndex].id);
+                } else {
+                    // 如果抓不到設備列表，退回使用基本模式
+                    isUsingFacingModeFallback = true;
+                    startWithFacingMode(currentFacingMode);
+                }
+            }).catch(err => {
+                console.log("無法取得相機列表，改用基本模式", err);
+                isUsingFacingModeFallback = true;
+                startWithFacingMode(currentFacingMode);
+            });
+        }
+
+        function getScannerConfig() {
+            return {
                 fps: 30,
                 qrbox: { width: 250, height: 250 },
                 videoConstraints: {
                     width: { ideal: 1920 },
                     height: { ideal: 1080 }
                 }
-            }; 
-            
-            // 修正：這裡必須保持嚴格的 1 個 key (只有 facingMode)
-            const cameraConfig = { 
-                facingMode: currentFacingMode
             };
-            
-            html5QrCode.start(cameraConfig, config, onScanSuccess)
-            .then(() => {
-                document.getElementById('startBtn').style.display = 'none';
-                document.getElementById('switchBtn').style.display = 'block'; 
-                document.getElementById('stopBtn').style.display = 'block';
-            })
-            .catch((err) => {
-                alert("無法開啟相機！\n系統回報錯誤：" + err);
-            });
         }
+
+        function startWithCameraId(cameraId) {
+            html5QrCode.start(cameraId, getScannerConfig(), onScanSuccess)
+                .then(onCameraStartSuccess)
+                .catch(err => alert("無法開啟相機！\n錯誤：" + err));
+        }
+
+        function startWithFacingMode(mode) {
+            html5QrCode.start({ facingMode: mode }, getScannerConfig(), onScanSuccess)
+                .then(onCameraStartSuccess)
+                .catch(err => alert("無法開啟相機！\n錯誤：" + err));
+        }
+
+        function onCameraStartSuccess() {
+            document.getElementById('startBtn').style.display = 'none';
+            // 只有當找到超過 1 顆鏡頭，或使用基本模式時，才顯示切換按鈕
+            if (availableCameras.length > 1 || isUsingFacingModeFallback) {
+                document.getElementById('switchBtn').style.display = 'block'; 
+            }
+            document.getElementById('stopBtn').style.display = 'block';
+        }
+
         document.getElementById('startBtn').addEventListener('click', startScanner);
 
+        // 切換鏡頭邏輯：按順序輪播所有抓取到的實體鏡頭
         document.getElementById('switchBtn').addEventListener('click', () => {
             html5QrCode.stop().then(() => {
-                if (currentFacingMode === "environment") {
-                    currentFacingMode = "user"; 
+                if (isUsingFacingModeFallback) {
+                    currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
+                    startWithFacingMode(currentFacingMode);
                 } else {
-                    currentFacingMode = "environment"; 
+                    currentCameraIndex = (currentCameraIndex + 1) % availableCameras.length;
+                    startWithCameraId(availableCameras[currentCameraIndex].id);
                 }
-                startScanner();
             }).catch(err => console.log("切換鏡頭失敗", err));
         });
 
