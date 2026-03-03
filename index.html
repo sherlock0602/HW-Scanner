@@ -134,10 +134,9 @@
     </div>
 
 <div class="camera-controls">
-        <select id="cameraSelect" style="flex: 2; padding: 10px; border-radius: 8px; font-size: 16px; border: 1px solid #ccc; display: none;"></select>
-        
-        <button id="startBtn" class="btn btn-start" style="flex: 1;">開啟相機</button>
-        <button id="stopBtn" class="btn btn-stop" style="flex: 1;">暫停</button>
+        <button id="startBtn" class="btn btn-start">開啟相機掃描</button>
+        <button id="switchBtn" class="btn btn-switch" style="display: none;">切換前後鏡頭</button>
+        <button id="stopBtn" class="btn btn-stop" style="display: none;">暫停相機</button>
     </div>
     <div class="scanner-container">
         <div id="reader"></div>
@@ -288,79 +287,73 @@
             renderData(); // 重新渲染作業資料，確保未交人數計算正確
         });
 // ==========================================
-        // 6. 終極相機控制邏輯 (下拉選單手動選擇)
+        // 6. 自訂相機控制邏輯 (雙重保險與平板優化版)
         // ==========================================
         function initScanner() {
             html5QrCode = new Html5Qrcode("reader");
+        }
+
+        // 預設優先使用後置鏡頭
+        let currentFacingMode = "environment"; 
+
+        function startScanner() {
+            // 設定一：要求 720p (1280x720)，這是平板後鏡頭最容易接受的解析度，且足夠遠距離掃描
+            const idealConfig = { 
+                fps: 15, // 稍微降低幀率，讓平板鏡頭有更多時間對焦
+                qrbox: { width: 250, height: 250 }
+            }; 
             
-            // 網頁載入時，立刻請求相機權限並抓取鏡頭清單
-            Html5Qrcode.getCameras().then(devices => {
-                if (devices && devices.length > 0) {
-                    const select = document.getElementById('cameraSelect');
-                    select.style.display = 'block'; // 顯示下拉選單
-                    
-                    devices.forEach((camera, index) => {
-                        const option = document.createElement('option');
-                        option.value = camera.id;
-                        // 處理如果瀏覽器因為安全限制不給名字的狀況
-                        option.text = camera.label || `未命名鏡頭 ${index + 1}`; 
-                        
-                        // 嘗試自動選擇後鏡頭 (如果名字裡有這些關鍵字)
-                        const camName = option.text.toLowerCase();
-                        if (camName.includes('back') || camName.includes('後') || camName.includes('environment')) {
-                            option.selected = true; 
-                        }
-                        
-                        select.appendChild(option);
-                    });
-                }
-            }).catch(err => {
-                console.warn("無法預先抓取相機清單，可能受到瀏覽器安全限制：", err);
+            const cameraConfig = { 
+                facingMode: currentFacingMode,
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            };
+
+            // 嘗試第一階段：帶有高解析度要求的開啟
+            html5QrCode.start(cameraConfig, idealConfig, onScanSuccess)
+            .then(() => {
+                showCameraButtons();
+            })
+            .catch((err) => {
+                console.warn("平板拒絕解析度要求，啟動安全模式：", err);
+                
+                // 嘗試第二階段 (安全模式)：拔掉解析度要求，只強制要求切換前後鏡頭
+                const safeConfig = { fps: 15, qrbox: { width: 250, height: 250 } };
+                
+                html5QrCode.start({ facingMode: currentFacingMode }, safeConfig, onScanSuccess)
+                .then(() => {
+                    showCameraButtons();
+                })
+                .catch(err2 => {
+                    alert("無法開啟相機，請確認設備權限！\n錯誤代碼：" + err2);
+                });
             });
         }
 
-        function startScanner() {
-            const select = document.getElementById('cameraSelect');
-            const selectedCameraId = select.value;
-
-            // 相機參數：要求高解析度與對焦框
-            const config = {
-                fps: 30,
-                qrbox: { width: 250, height: 250 },
-                videoConstraints: {
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 }
-                }
-            };
-
-            // 如果有選單選中 ID，就用 ID；如果沒有，用終極強制語法 { exact: "environment" }
-            const cameraConfig = selectedCameraId 
-                ? selectedCameraId 
-                : { facingMode: { exact: "environment" } };
-
-            html5QrCode.start(cameraConfig, config, onScanSuccess)
-                .then(() => {
-                    document.getElementById('startBtn').style.display = 'none';
-                    document.getElementById('stopBtn').style.display = 'block';
-                    select.disabled = true; // 掃描時鎖定下拉選單
-                })
-                .catch((err) => {
-                    console.log("嘗試開啟失敗，退回基本模式：", err);
-                    // 如果被強制語法拒絕，退回最普通的環境模式
-                    html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
-                        .catch(err2 => alert("開啟相機失敗，請確認是否給予相機權限！\n" + err2));
-                });
+        function showCameraButtons() {
+            document.getElementById('startBtn').style.display = 'none';
+            document.getElementById('switchBtn').style.display = 'block'; 
+            document.getElementById('stopBtn').style.display = 'block';
         }
 
         document.getElementById('startBtn').addEventListener('click', startScanner);
 
+        // 切換鏡頭按鈕：在 environment (後) 與 user (前) 之間切換
+        document.getElementById('switchBtn').addEventListener('click', () => {
+            html5QrCode.stop().then(() => {
+                currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
+                startScanner();
+            }).catch(err => console.log("切換鏡頭失敗", err));
+        });
+
         document.getElementById('stopBtn').addEventListener('click', () => {
             html5QrCode.stop().then(() => {
                 document.getElementById('startBtn').style.display = 'block';
+                document.getElementById('switchBtn').style.display = 'none'; 
                 document.getElementById('stopBtn').style.display = 'none';
-                document.getElementById('cameraSelect').disabled = false; // 解除鎖定
             }).catch(err => console.log("關閉相機失敗", err));
-        });        // ==========================================
+        });
+        // ==========================================
         // 7. 掃描邏輯與畫面渲染
         // ==========================================
         function onScanSuccess(decodedText) {
