@@ -106,7 +106,7 @@
         .subject-section h4 { margin: 0 0 10px 0; color: #34495e; }
         .missing-list { color: #e74c3c; font-weight: bold; }
 
-        /* 新增：設定區塊樣式 */
+        /* 設定區塊樣式 */
         .settings-container { background: white; padding: 15px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
         .settings-container h3 { margin-top: 0; color: #2c3e50; font-size: 18px; margin-bottom: 15px;}
         .settings-input-group { display: flex; gap: 10px; margin-bottom: 15px; }
@@ -133,11 +133,12 @@
         <div id="classListDisplay"></div>
     </div>
 
-<div class="camera-controls">
+    <div class="camera-controls">
         <button id="startBtn" class="btn btn-start">開啟相機掃描</button>
         <button id="switchBtn" class="btn btn-switch" style="display: none;">切換前後鏡頭</button>
         <button id="stopBtn" class="btn btn-stop" style="display: none;">暫停相機</button>
     </div>
+    
     <div class="scanner-container">
         <div id="reader"></div>
         <div id="scanToast" class="scan-toast"></div>
@@ -150,9 +151,7 @@
         // ==========================================
         // 1. 基本設定與變數宣告
         // ==========================================
-        // 改為從 localStorage 讀取，若無則預設為空物件
         let classConfig = JSON.parse(localStorage.getItem('customClassConfig')) || {};
-
         let homeworkData = {};
         let lastScannedText = "";
         let lastScannedTime = 0;
@@ -241,7 +240,7 @@
         });
 
         // ==========================================
-        // 5. 班級設定邏輯 (新增)
+        // 5. 班級設定邏輯
         // ==========================================
         function updateClassListDisplay() {
             const container = document.getElementById('classListDisplay');
@@ -258,13 +257,12 @@
             }
         }
 
-        // 將 removeClass 綁定到 window，確保 onclick 可以呼叫到
         window.removeClass = function(className) {
             if(confirm(`確定要刪除 ${className} 的設定嗎？`)) {
                 delete classConfig[className];
                 localStorage.setItem('customClassConfig', JSON.stringify(classConfig));
                 updateClassListDisplay();
-                renderData(); // 更新作業統計畫面
+                renderData(); 
             }
         };
 
@@ -284,58 +282,55 @@
             document.getElementById('inputStudentCount').value = '';
             
             updateClassListDisplay();
-            renderData(); // 重新渲染作業資料，確保未交人數計算正確
+            renderData(); 
         });
+
         // ==========================================
-        // 6. 自訂相機控制邏輯 (雙重保險與平板優化版)
+        // 6. 自訂相機控制邏輯 (移除解析度限制版)
         // ==========================================
         function initScanner() {
             html5QrCode = new Html5Qrcode("reader");
         }
 
-        // 預設優先使用後置鏡頭
         let currentFacingMode = "environment"; 
 
-     async function startScanner() {
+        function startScanner() {
+            // 強制指定鏡頭方向，完全拿掉解析度限制
+            let cameraConfig;
+            if (currentFacingMode === "environment") {
+                cameraConfig = { facingMode: { exact: "environment" } };
+            } else {
+                cameraConfig = { facingMode: "user" };
+            }
 
-    const devices = await Html5Qrcode.getCameras();
+            const simpleConfig = { 
+                fps: 15, 
+                qrbox: { width: 250, height: 250 }
+            }; 
 
-    if (!devices || devices.length === 0) {
-        alert("找不到相機設備");
-        return;
-    }
-
-    let cameraId;
-
-    if (currentFacingMode === "environment") {
-
-        // 優先找有 back / rear / environment 字樣的鏡頭
-        const backCamera = devices.find(device =>
-            device.label.toLowerCase().includes("back") ||
-            device.label.toLowerCase().includes("rear") ||
-            device.label.toLowerCase().includes("environment")
-        );
-
-        cameraId = backCamera ? backCamera.id : devices[devices.length - 1].id;
-
-    } else {
-        // 前鏡頭通常在第一個
-        cameraId = devices[0].id;
-    }
-
-    html5QrCode.start(
-        cameraId,
-        {
-            fps: 15,
-            qrbox: { width: 250, height: 250 }
-        },
-        onScanSuccess
-    ).then(() => {
-        showCameraButtons();
-    }).catch(err => {
-        alert("啟動相機失敗：" + err);
-    });
-}
+            try {
+                // 嘗試開啟
+                html5QrCode.start(cameraConfig, simpleConfig, onScanSuccess)
+                .then(() => {
+                    showCameraButtons();
+                })
+                .catch((err) => {
+                    console.warn("強制指定鏡頭失敗，啟動備用模式：", err);
+                    
+                    // 備用模式：連 exact 都拿掉，只求能開
+                    const fallbackConfig = { facingMode: currentFacingMode };
+                    html5QrCode.start(fallbackConfig, simpleConfig, onScanSuccess)
+                    .then(() => {
+                        showCameraButtons();
+                    })
+                    .catch(err2 => {
+                        alert("無法開啟相機，請確認設備權限！\n錯誤：" + err2);
+                    });
+                });
+            } catch (error) {
+                alert("啟動發生錯誤：" + error);
+            }
+        }
 
         function showCameraButtons() {
             document.getElementById('startBtn').style.display = 'none';
@@ -345,15 +340,14 @@
 
         document.getElementById('startBtn').addEventListener('click', startScanner);
 
-        // 切換鏡頭按鈕：在 environment (後) 與 user (前) 之間切換
+        // 切換鏡頭按鈕：加入延遲緩衝，避免 iPad 硬體資源卡住
         document.getElementById('switchBtn').addEventListener('click', () => {
-            // 先隱藏按鈕避免連續點擊
-            document.getElementById('switchBtn').disabled = true;
+            document.getElementById('switchBtn').disabled = true; // 防連點
             
             html5QrCode.stop().then(() => {
                 currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
                 
-                // 【關鍵修改 3】給 iPadOS 300 毫秒的時間釋放上一顆鏡頭的硬體資源
+                // 給 iPadOS 300 毫秒的時間釋放硬體資源再重啟
                 setTimeout(() => {
                     startScanner();
                     document.getElementById('switchBtn').disabled = false;
@@ -372,6 +366,7 @@
                 document.getElementById('stopBtn').style.display = 'none';
             }).catch(err => console.log("關閉相機失敗", err));
         });
+
         // ==========================================
         // 7. 掃描邏輯與畫面渲染
         // ==========================================
@@ -437,7 +432,6 @@
                 for (const [category, seatNumbers] of Object.entries(categories)) {
                     const className = category.split('-')[0];
                     
-                    // 動態抓取設定的人數，如果沒設定，就預設用掃描到的最大座號，或是 30 作為保底
                     let totalStudents = classConfig[className];
                     if (!totalStudents) {
                         totalStudents = Math.max(30, ...seatNumbers); 
@@ -448,14 +442,13 @@
                         if(!seatNumbers.includes(i)) missing.push(i);
                     }
 
-                    // 如果沒設定班級，給個小提示
                     const warningHtml = !classConfig[className] ? `<br><span style="color:#e67e22; font-size:13px; font-weight:normal;">(未設定總人數，暫以 ${totalStudents} 人計算)</span>` : '';
 
                     dateHtml += `
                         <div class="subject-section">
                             <h4>${category} ${warningHtml}</h4>
-                            <p><strong>已交座號 (${seatNumbers.length}/${totalStudents}人)：</strong><br> ${seatNumbers.join(', ')}</p>
-                            <p class="missing-list">未交座號 (${missing.length}人)：<br> ${missing.join(', ')}</p>
+                            <p><strong>已交 (${seatNumbers.length}/${totalStudents}人)：</strong><br> ${seatNumbers.join(', ')}</p>
+                            <p class="missing-list">未交 (${missing.length}人)：<br> ${missing.join(', ')}</p>
                         </div>
                     `;
                 }
@@ -467,7 +460,7 @@
         // ==========================================
         // 8. 系統初始化
         // ==========================================
-        updateClassListDisplay(); // 先畫出設定的班級
+        updateClassListDisplay(); 
         loadData();
         requestWakeLock();
         initScanner();
