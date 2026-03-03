@@ -15,6 +15,7 @@
         }
         h2 { text-align: center; color: #333; }
         
+        /* 自訂相機按鈕樣式 */
         .camera-controls { display: flex; gap: 10px; margin-bottom: 20px; }
         .btn {
             flex: 1;
@@ -30,9 +31,12 @@
         }
         .btn-start { background-color: #2ecc71; }
         .btn-start:hover { background-color: #27ae60; }
+        .btn-switch { background-color: #f39c12; }
+        .btn-switch:hover { background-color: #e67e22; }
         .btn-stop { background-color: #95a5a6; display: none; }
         .btn-stop:hover { background-color: #7f8c8d; }
         
+        /* 相機容器與浮動提示框樣式 */
         .scanner-container {
             position: relative; 
             width: 100%;
@@ -76,6 +80,7 @@
             color: #333;
         }
         
+        /* 歸零按鈕的樣式 */
         .reset-btn {
             background-color: #ff4d4d;
             color: white;
@@ -93,6 +98,7 @@
         }
         .reset-btn:hover { background-color: #e60000; }
 
+        /* 資料呈現區域樣式 */
         .data-container { margin-top: 20px; }
         .date-section { background: white; border: 1px solid #ddd; padding: 15px; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
         .date-section h3 { margin-top: 0; color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; }
@@ -107,6 +113,7 @@
     
     <div class="camera-controls">
         <button id="startBtn" class="btn btn-start">開啟相機掃描</button>
+        <button id="switchBtn" class="btn btn-switch" style="display: none;">切換前後鏡頭</button>
         <button id="stopBtn" class="btn btn-stop">暫停相機</button>
     </div>
 
@@ -214,33 +221,49 @@
         });
 
         // ==========================================
-        // 5. 自訂相機控制邏輯 (核心升級區：全畫面+高畫質+高幀率)
+        // 5. 自訂相機控制邏輯 (含前後鏡頭切換)
         // ==========================================
         function initScanner() {
             html5QrCode = new Html5Qrcode("reader");
         }
 
-    document.getElementById('startBtn').addEventListener('click', () => {
-            // 保持 30 fps 高靈敏度
+        // 預設先使用後鏡頭 (environment)，前鏡頭代號是 (user)
+        let currentFacingMode = "environment"; 
+
+        function startScanner() {
+            // fps: 30 保持高靈敏度掃描
             const config = { fps: 30 }; 
-            
-            // 【關鍵修正】：移除強制高畫質，改回最單純的「優先使用後鏡頭」
-            const cameraConfig = { facingMode: "environment" };
+            const cameraConfig = { facingMode: currentFacingMode };
             
             html5QrCode.start(cameraConfig, config, onScanSuccess)
             .then(() => {
                 document.getElementById('startBtn').style.display = 'none';
+                document.getElementById('switchBtn').style.display = 'block'; 
                 document.getElementById('stopBtn').style.display = 'block';
             })
             .catch((err) => {
-                // 【關鍵修正】：把系統真實的錯誤原因顯示出來！
                 alert("無法開啟相機！\n系統回報錯誤：" + err);
+            });
+        }
+
+        document.getElementById('startBtn').addEventListener('click', startScanner);
+
+        // 點擊「切換前後鏡頭」按鈕的邏輯
+        document.getElementById('switchBtn').addEventListener('click', () => {
+            html5QrCode.stop().then(() => {
+                if (currentFacingMode === "environment") {
+                    currentFacingMode = "user"; // 換前鏡頭
+                } else {
+                    currentFacingMode = "environment"; // 換後鏡頭
+                }
+                startScanner();
             });
         });
 
         document.getElementById('stopBtn').addEventListener('click', () => {
             html5QrCode.stop().then(() => {
                 document.getElementById('startBtn').style.display = 'block';
+                document.getElementById('switchBtn').style.display = 'none'; 
                 document.getElementById('stopBtn').style.display = 'none';
             });
         });
@@ -251,7 +274,7 @@
         function onScanSuccess(decodedText) {
             const currentTime = new Date().getTime();
 
-            // 防重複：同一個條碼 1.5 秒內一直停在畫面上，直接忽略不處理 (加快容錯速度)
+            // 防重複：1.5 秒內不重複掃描同一個條碼
             if (decodedText === lastScannedText && (currentTime - lastScannedTime) < 1500) {
                 return;
             }
@@ -262,7 +285,7 @@
             const parts = decodedText.split('-');
             if (parts.length !== 3) return; 
 
-            // 在這裡加入「科目英文代號對照表」邏輯 (解決中文亂碼問題)
+            // 科目英文代號與防亂碼對照表
             const subjectMap = {
                 "BK": "聯絡簿",
                 "CH": "國語",
@@ -270,13 +293,12 @@
                 "SO": "社會",
                 "SC": "自然",
                 "EN": "英文",
-                "oa?": "聯絡簿" // 為了讓你之前印出來有亂碼的貼紙也能用，可以直接幫它翻譯！
+                "oa?": "聯絡簿" // 解決你之前遇到的亂碼問題
             };
 
             const className = parts[0];
             const rawSubject = parts[1];
             
-            // 如果掃出來是 "oa?" 或 "BK"，都會自動翻譯成中文
             const subject = subjectMap[rawSubject] || rawSubject; 
             
             const seatNumber = parseInt(parts[2], 10);
