@@ -303,9 +303,19 @@
                 cameraConfig = { facingMode: "user" };
             }
 
+            // 【主要修改這裡】讓掃描框動態放大
             const simpleConfig = { 
                 fps: 15, 
-                qrbox: { width: 250, height: 250 }
+                qrbox: function(viewfinderWidth, viewfinderHeight) {
+                    // 取畫面寬度或高度的 85%（以短邊為主，確保框框不會超出螢幕）
+                    const minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
+                    const size = Math.floor(minEdgeSize * 0.85);
+                    
+                    // 如果你覺得正方形不好掃條碼，也可以改成扁長方形：
+                    // return { width: Math.floor(viewfinderWidth * 0.85), height: Math.floor(viewfinderHeight * 0.4) };
+                    
+                    return { width: size, height: size };
+                }
             }; 
 
             try {
