@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>作業掃描登記表</title>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            padding: 20px; 
+            max-width: 600px; 
+            margin: 0 auto; 
+            background-color: #f4f7f6;
+        }
+        h2 { text-align: center; color: #333; }
+        
+        /* 掃描器與自訂按鈕區域 */
+        #reader { width: 100%; margin-bottom: 15px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .camera-controls { display: flex; gap: 10px; margin-bottom: 20px; }
+        
+        /* 自訂相機按鈕樣式 */
+        .btn {
+            flex: 1;
+            padding: 12px;
+            font-size: 16px;
+            font-weight: bold;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            transition: background-color 0.3s;
+        }
+        .btn-start { background-color: #2ecc71; }
+        .btn-start:hover { background-color: #27ae60; }
+        .btn-stop { background-color: #95a5a6; display: none; /* 預設隱藏停止按鈕 */ }
+        .btn-stop:hover { background-color: #7f8c8d; }
+        
+        /* 歸零按鈕的樣式 */
+        .reset-btn {
+            background-color: #ff4d4d;
+            color: white;
+            padding: 12px 15px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-bottom: 20px;
+            font-size: 16px;
+            font-weight: bold;
+            width: 100%;
+            display: block;
+            box-shadow: 0 2px 4px rgba(255, 77, 77, 0.3);
+            transition: background-color 0.3s;
+        }
+        .reset-btn:hover { background-color: #e60000; }
+
+        /* 資料呈現區域樣式 */
+        .data-container { margin-top: 20px; }
+        .date-section { background: white; border: 1px solid #ddd; padding: 15px; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .date-section h3 { margin-top: 0; color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        .subject-section { background: #f9f9f9; border-left: 4px solid #3498db; padding: 12px; margin-top: 15px; border-radius: 4px; }
+        .subject-section h4 { margin: 0 0 10px 0; color: #34495e; }
+        .missing-list { color: #e74c3c; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h2>作業掃描登記系統</h2>
+    
+    <div class="camera-controls">
+        <button id="startBtn" class="btn btn-start">開啟相機掃描</button>
+        <button id="stopBtn" class="btn btn-stop">暫停相機</button>
+    </div>
+
+    <div id="reader"></div>
+
+    <button id="resetBtn" class="reset-btn">清空今日所有掃描資料</button> 
+    
+    <div id="result" class="data-container"></div>
+
+    <script>
+        // ==========================================
+        // 1. 基本設定與變數宣告
+        // ==========================================
+        const classConfig = {
+            "601": 28, "602": 29, "603": 27, "604": 30
+        };
+
+        let homeworkData = {};
+        let lastScannedText = "";
+        let lastScannedTime = 0;
+        let wakeLock = null;
+        let html5QrCode; // 宣告核心掃描器變數
+
+        function getTodayDate() {
+            const today = new Date();
+            today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+            return today.toISOString().split('T')[0];
+        }
+
+        // ==========================================
+        // 2. 存檔與資料管理功能
+        // ==========================================
+        function saveData() {
+            localStorage.setItem('homeworkData', JSON.stringify(homeworkData));
+        }
+
+        function loadData() {
+            const savedData = localStorage.getItem('homeworkData');
+            if (savedData) {
+                homeworkData = JSON.parse(savedData);
+                const today = getTodayDate();
+                let dataChanged = false;
+
+                for (const dateKey in homeworkData) {
+                    if (dateKey !== today) {
+                        delete homeworkData[dateKey];
+                        dataChanged = true;
+                    }
+                }
+                if (dataChanged) saveData();
+            }
+            renderData();
+        }
+
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            const userConfirmed = confirm("確定要全部重新來過嗎？這將會清空今天所有的掃描紀錄喔！");
+            if (userConfirmed) {
+                homeworkData = {}; 
+                localStorage.removeItem('homeworkData'); 
+                renderData(); 
+                alert("資料已全部歸零！");
+            }
+        });
+
+        // ==========================================
+        // 3. 螢幕防休眠功能
+        // ==========================================
+        async function requestWakeLock() {
+            try {
+                wakeLock = await navigator.wakeLock.request('screen');
+            } catch (err) {
+                console.error(`無法鎖定螢幕: ${err.message}`);
+            }
+        }
+
+        document.addEventListener('visibilitychange', async () => {
+            if (wakeLock !== null && document.visibilityState === 'visible') {
+                await requestWakeLock();
+            }
+        });
+
+        // ==========================================
+        // 4. 自訂相機控制邏輯 (取代原本的英文介面)
+        // ==========================================
+        function initScanner() {
+            // 使用核心引擎 Html5Qrcode，而不是懶人包 Html5QrcodeScanner
+            html5QrCode = new Html5Qrcode("reader");
+        }
+
+        document.getElementById('startBtn').addEventListener('click', () => {
+            // 設定掃描參數：使用後置鏡頭(environment)
+            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+            
+            html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
+            .then(() => {
+                // 成功開啟相機後，切換按鈕顯示狀態
+                document.getElementById('startBtn').style.display = 'none';
+                document.getElementById('stopBtn').style.display = 'block';
+            })
+            .catch((err) => {
+                alert("無法開啟相機，請確認是否已給予瀏覽器相機權限！");
+            });
+        });
+
+        document.getElementById('stopBtn').addEventListener('click', () => {
+            html5QrCode.stop().then(() => {
+                // 成功關閉相機後，切換按鈕顯示狀態
+                document.getElementById('startBtn').style.display = 'block';
+                document.getElementById('stopBtn').style.display = 'none';
+            });
+        });
+
+        // ==========================================
+        // 5. 掃描邏輯與畫面渲染
+        // ==========================================
+        function onScanSuccess(decodedText) {
+            const currentTime = new Date().getTime();
+
+            if (decodedText === lastScannedText && (currentTime - lastScannedTime) < 3000) {
+                return;
+            }
+
+            lastScannedText = decodedText;
+            lastScannedTime = currentTime;
+
+            const parts = decodedText.split('-');
+            if (parts.length !== 3) return; 
+
+            const className = parts[0];
+            const subject = parts[1];
+            const seatNumber = parseInt(parts[2], 10);
+            
+            // 如果解析出來不是數字，就中斷執行
+            if(isNaN(seatNumber)) return; 
+
+            const today = getTodayDate();
+            const categoryKey = `${className}-${subject}`;
+
+            if (!homeworkData[today]) homeworkData[today] = {};
+            if (!homeworkData[today][categoryKey]) homeworkData[today][categoryKey] = [];
+
+            if (!homeworkData[today][categoryKey].includes(seatNumber)) {
+                homeworkData[today][categoryKey].push(seatNumber);
+                homeworkData[today][categoryKey].sort((a, b) => a - b);
+                
+                saveData(); 
+                renderData(); 
+            }
+        }
+
+        function renderData() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '';
+
+            for (const [date, categories] of Object.entries(homeworkData)) {
+                let dateHtml = `<div class="date-section"><h3>日期：${date}</h3>`;
+                
+                for (const [category, seatNumbers] of Object.entries(categories)) {
+                    const className = category.split('-')[0];
+                    const totalStudents = classConfig[className] || 30; 
+
+                    let missing = [];
+                    for(let i = 1; i <= totalStudents; i++) {
+                        if(!seatNumbers.includes(i)) missing.push(i);
+                    }
+
+                    dateHtml += `
+                        <div class="subject-section">
+                            <h4>${category}</h4>
+                            <p><strong>已交座號 (${seatNumbers.length}/${totalStudents}人)：</strong><br> ${seatNumbers.join(', ')}</p>
+                            <p class="missing-list">未交座號 (${missing.length}人)：<br> ${missing.join(', ')}</p>
+                        </div>
+                    `;
+                }
+                dateHtml += `</div>`;
+                resultDiv.innerHTML += dateHtml;
+            }
+        }
+
+        // ==========================================
+        // 6. 系統初始化
+        // ==========================================
+        loadData();
+        requestWakeLock();
+        initScanner();
+
+    </script>
+</body>
+</html>
