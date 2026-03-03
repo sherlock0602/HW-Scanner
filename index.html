@@ -286,7 +286,7 @@
             updateClassListDisplay();
             renderData(); // 重新渲染作業資料，確保未交人數計算正確
         });
-// ==========================================
+        // ==========================================
         // 6. 自訂相機控制邏輯 (雙重保險與平板優化版)
         // ==========================================
         function initScanner() {
@@ -296,13 +296,15 @@
         // 預設優先使用後置鏡頭
         let currentFacingMode = "environment"; 
 
-      function startScanner() {
-            // 修正：第一個參數嚴格保持只有一個 key (facingMode)
-            const cameraConfig = { 
-                facingMode: currentFacingMode 
-            };
+        function startScanner() {
+            // 【關鍵修改 1】針對 iPadOS，後置鏡頭強烈建議加上 exact 強制指定
+            let cameraConfig;
+            if (currentFacingMode === "environment") {
+                cameraConfig = { facingMode: { exact: "environment" } };
+            } else {
+                cameraConfig = { facingMode: "user" };
+            }
 
-            // 修正：把解析度要求放在第二個參數的 videoConstraints 裡面
             const idealConfig = { 
                 fps: 15, 
                 qrbox: { width: 250, height: 250 },
@@ -313,27 +315,27 @@
             }; 
 
             try {
-                // 嘗試第一階段：帶有解析度要求的開啟
+                // 嘗試第一階段：帶有強制要求與解析度的開啟
                 html5QrCode.start(cameraConfig, idealConfig, onScanSuccess)
                 .then(() => {
                     showCameraButtons();
                 })
                 .catch((err) => {
-                    console.warn("平板拒絕解析度要求，啟動安全模式：", err);
+                    console.warn("嚴格模式啟動失敗，啟動安全退回模式：", err);
                     
-                    // 嘗試第二階段 (安全模式)：拔掉解析度要求，只求能順利開啟鏡頭
+                    // 【關鍵修改 2】如果 exact 被 iPad 拒絕（OverconstrainedError），退回普通模式
+                    const fallbackCameraConfig = { facingMode: currentFacingMode };
                     const safeConfig = { fps: 15, qrbox: { width: 250, height: 250 } };
                     
-                    html5QrCode.start(cameraConfig, safeConfig, onScanSuccess)
+                    html5QrCode.start(fallbackCameraConfig, safeConfig, onScanSuccess)
                     .then(() => {
                         showCameraButtons();
                     })
                     .catch(err2 => {
-                        alert("無法開啟相機，請確認設備權限！\n錯誤：" + err2);
+                        alert("無法開啟相機，請確認 Safari 的相機權限是否已開啟！\n錯誤：" + err2);
                     });
                 });
             } catch (error) {
-                // 如果再遇到設定格式錯誤，至少會跳警告，不會再「毫無反應」
                 alert("啟動參數發生錯誤：" + error);
             }
         }
@@ -348,10 +350,22 @@
 
         // 切換鏡頭按鈕：在 environment (後) 與 user (前) 之間切換
         document.getElementById('switchBtn').addEventListener('click', () => {
+            // 先隱藏按鈕避免連續點擊
+            document.getElementById('switchBtn').disabled = true;
+            
             html5QrCode.stop().then(() => {
                 currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
-                startScanner();
-            }).catch(err => console.log("切換鏡頭失敗", err));
+                
+                // 【關鍵修改 3】給 iPadOS 300 毫秒的時間釋放上一顆鏡頭的硬體資源
+                setTimeout(() => {
+                    startScanner();
+                    document.getElementById('switchBtn').disabled = false;
+                }, 300);
+                
+            }).catch(err => {
+                console.log("切換鏡頭失敗", err);
+                document.getElementById('switchBtn').disabled = false;
+            });
         });
 
         document.getElementById('stopBtn').addEventListener('click', () => {
