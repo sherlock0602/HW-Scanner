@@ -15,7 +15,6 @@
         }
         h2 { text-align: center; color: #333; }
         
-        /* 自訂相機按鈕樣式 */
         .camera-controls { display: flex; gap: 10px; margin-bottom: 20px; }
         .btn {
             flex: 1;
@@ -34,11 +33,8 @@
         .btn-stop { background-color: #95a5a6; display: none; }
         .btn-stop:hover { background-color: #7f8c8d; }
         
-        /* ==========================================
-           新增：相機容器與浮動提示框樣式
-           ========================================== */
         .scanner-container {
-            position: relative; /* 讓裡面的浮動視窗以此為基準對齊 */
+            position: relative; 
             width: 100%;
             margin-bottom: 15px;
         }
@@ -55,34 +51,31 @@
             position: absolute;
             bottom: 20px;
             left: 50%;
-            transform: translateX(-50%); /* 讓提示框置中 */
+            transform: translateX(-50%); 
             padding: 10px 20px;
             border-radius: 30px;
             font-size: 16px;
             font-weight: bold;
             color: white;
             z-index: 10;
-            opacity: 0; /* 預設完全透明隱藏 */
-            pointer-events: none; /* 讓滑鼠/手指可以穿透它點擊 */
-            transition: all 0.3s ease; /* 淡入淡出的動畫效果 */
+            opacity: 0; 
+            pointer-events: none; 
+            transition: all 0.3s ease; 
             white-space: nowrap;
             box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         }
 
-        /* 掃描成功的綠色樣式 */
         .scan-toast.show-success {
             opacity: 1;
             background-color: rgba(46, 204, 113, 0.95); 
         }
 
-        /* 重複掃描的黃色樣式 */
         .scan-toast.show-duplicate {
             opacity: 1;
             background-color: rgba(241, 196, 15, 0.95); 
             color: #333;
         }
         
-        /* 歸零按鈕的樣式 */
         .reset-btn {
             background-color: #ff4d4d;
             color: white;
@@ -100,7 +93,6 @@
         }
         .reset-btn:hover { background-color: #e60000; }
 
-        /* 資料呈現區域樣式 */
         .data-container { margin-top: 20px; }
         .date-section { background: white; border: 1px solid #ddd; padding: 15px; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
         .date-section h3 { margin-top: 0; color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; }
@@ -139,7 +131,7 @@
         let lastScannedTime = 0;
         let wakeLock = null;
         let html5QrCode; 
-        let toastTimeout; // 控制浮動提示消失的計時器
+        let toastTimeout; 
 
         function getTodayDate() {
             const today = new Date();
@@ -154,20 +146,16 @@
             const toast = document.getElementById('scanToast');
             toast.innerText = message;
             
-            // 先清除之前的動畫狀態
             toast.classList.remove('show-success', 'show-duplicate');
             
-            // 依照類型加入對應的顏色
             if(type === 'success') {
                 toast.classList.add('show-success');
             } else {
                 toast.classList.add('show-duplicate');
             }
             
-            // 如果原本有倒數計時，先取消掉（避免連續掃描時提早消失）
             clearTimeout(toastTimeout);
             
-            // 設定 2 秒後自動隱藏
             toastTimeout = setTimeout(() => {
                 toast.classList.remove('show-success', 'show-duplicate');
             }, 2000);
@@ -226,16 +214,25 @@
         });
 
         // ==========================================
-        // 5. 自訂相機控制邏輯
+        // 5. 自訂相機控制邏輯 (核心升級區：全畫面+高畫質+高幀率)
         // ==========================================
         function initScanner() {
             html5QrCode = new Html5Qrcode("reader");
         }
 
         document.getElementById('startBtn').addEventListener('click', () => {
-            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+            // 升級 1：移除 qrbox 參數，這樣就不會有方框限制，全畫面都可以抓取！
+            // 升級 2：提升 fps 為 30，增加掃描靈敏度
+            const config = { fps: 30 }; 
             
-            html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
+            // 升級 3：向手機/電腦請求高畫質 (理想是 1920x1080 解析度)
+            const cameraConstraints = {
+                facingMode: "environment", // 使用後鏡頭
+                width: { ideal: 1920 },    // 要求高畫質寬度
+                height: { ideal: 1080 }    // 要求高畫質高度
+            };
+            
+            html5QrCode.start(cameraConstraints, config, onScanSuccess)
             .then(() => {
                 document.getElementById('startBtn').style.display = 'none';
                 document.getElementById('stopBtn').style.display = 'block';
@@ -258,8 +255,8 @@
         function onScanSuccess(decodedText) {
             const currentTime = new Date().getTime();
 
-            // 防重複：同一個條碼 3 秒內一直停在畫面上，直接忽略不處理
-            if (decodedText === lastScannedText && (currentTime - lastScannedTime) < 3000) {
+            // 防重複：同一個條碼 1.5 秒內一直停在畫面上，直接忽略不處理 (加快容錯速度)
+            if (decodedText === lastScannedText && (currentTime - lastScannedTime) < 1500) {
                 return;
             }
 
@@ -269,8 +266,23 @@
             const parts = decodedText.split('-');
             if (parts.length !== 3) return; 
 
+            // 在這裡加入「科目英文代號對照表」邏輯 (解決中文亂碼問題)
+            const subjectMap = {
+                "BK": "聯絡簿",
+                "CH": "國語",
+                "MA": "數學",
+                "SO": "社會",
+                "SC": "自然",
+                "EN": "英文",
+                "oa?": "聯絡簿" // 為了讓你之前印出來有亂碼的貼紙也能用，可以直接幫它翻譯！
+            };
+
             const className = parts[0];
-            const subject = parts[1];
+            const rawSubject = parts[1];
+            
+            // 如果掃出來是 "oa?" 或 "BK"，都會自動翻譯成中文
+            const subject = subjectMap[rawSubject] || rawSubject; 
+            
             const seatNumber = parseInt(parts[2], 10);
             
             if(isNaN(seatNumber)) return; 
@@ -281,7 +293,6 @@
             if (!homeworkData[today]) homeworkData[today] = {};
             if (!homeworkData[today][categoryKey]) homeworkData[today][categoryKey] = [];
 
-            // 判斷該座號是否為「新加入」
             if (!homeworkData[today][categoryKey].includes(seatNumber)) {
                 homeworkData[today][categoryKey].push(seatNumber);
                 homeworkData[today][categoryKey].sort((a, b) => a - b);
@@ -289,10 +300,8 @@
                 saveData(); 
                 renderData(); 
                 
-                // 觸發綠色成功提示
                 showToast(`✅ 成功：${className} ${subject} ${seatNumber}號`, 'success');
             } else {
-                // 如果陣列裡已經有這個號碼了，觸發黃色重複提示
                 showToast(`⚠️ 已登記過：${seatNumber}號`, 'duplicate');
             }
         }
