@@ -105,12 +105,34 @@
         .subject-section { background: #f9f9f9; border-left: 4px solid #3498db; padding: 12px; margin-top: 15px; border-radius: 4px; }
         .subject-section h4 { margin: 0 0 10px 0; color: #34495e; }
         .missing-list { color: #e74c3c; font-weight: bold; }
+
+        /* 新增：設定區塊樣式 */
+        .settings-container { background: white; padding: 15px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .settings-container h3 { margin-top: 0; color: #2c3e50; font-size: 18px; margin-bottom: 15px;}
+        .settings-input-group { display: flex; gap: 10px; margin-bottom: 15px; }
+        .settings-input-group input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; min-width: 0; }
+        .settings-input-group button { background-color: #3498db; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 16px; white-space: nowrap; }
+        .settings-input-group button:hover { background-color: #2980b9; }
+        .class-tag { background: #ecf0f1; padding: 8px 12px; border-radius: 20px; font-size: 14px; display: inline-flex; align-items: center; gap: 8px; color: #333; font-weight: 500;}
+        .class-tag span { color: #e74c3c; cursor: pointer; font-weight: bold; font-size: 18px; line-height: 1; padding-bottom: 2px; }
+        .class-tag span:hover { color: #c0392b; }
+        #classListDisplay { display: flex; flex-wrap: wrap; gap: 10px; }
     </style>
 </head>
 <body>
 
     <h2>作業掃描登記系統</h2>
     
+    <div class="settings-container">
+        <h3>⚙️ 班級與人數設定</h3>
+        <div class="settings-input-group">
+            <input type="text" id="inputClassName" placeholder="班級 (如: 601)">
+            <input type="number" id="inputStudentCount" placeholder="總人數">
+            <button id="addClassBtn">新增</button>
+        </div>
+        <div id="classListDisplay"></div>
+    </div>
+
     <div class="camera-controls">
         <button id="startBtn" class="btn btn-start">開啟相機掃描</button>
         <button id="switchBtn" class="btn btn-switch" style="display: none;">切換前後鏡頭</button>
@@ -129,9 +151,8 @@
         // ==========================================
         // 1. 基本設定與變數宣告
         // ==========================================
-        const classConfig = {
-            "601": 28, "602": 29, "603": 25, "604": 30
-        };
+        // 改為從 localStorage 讀取，若無則預設為空物件
+        let classConfig = JSON.parse(localStorage.getItem('customClassConfig')) || {};
 
         let homeworkData = {};
         let lastScannedText = "";
@@ -221,19 +242,76 @@
         });
 
         // ==========================================
-        // 5. 自訂相機控制邏輯 (含前後鏡頭切換)
+        // 5. 班級設定邏輯 (新增)
+        // ==========================================
+        function updateClassListDisplay() {
+            const container = document.getElementById('classListDisplay');
+            container.innerHTML = '';
+            
+            for (const [className, count] of Object.entries(classConfig)) {
+                const tag = document.createElement('div');
+                tag.className = 'class-tag';
+                tag.innerHTML = `
+                    ${className} (${count}人)
+                    <span onclick="removeClass('${className}')">&times;</span>
+                `;
+                container.appendChild(tag);
+            }
+        }
+
+        // 將 removeClass 綁定到 window，確保 onclick 可以呼叫到
+        window.removeClass = function(className) {
+            if(confirm(`確定要刪除 ${className} 的設定嗎？`)) {
+                delete classConfig[className];
+                localStorage.setItem('customClassConfig', JSON.stringify(classConfig));
+                updateClassListDisplay();
+                renderData(); // 更新作業統計畫面
+            }
+        };
+
+        document.getElementById('addClassBtn').addEventListener('click', () => {
+            const className = document.getElementById('inputClassName').value.trim();
+            const count = parseInt(document.getElementById('inputStudentCount').value, 10);
+            
+            if (!className || isNaN(count) || count <= 0) {
+                alert('請輸入有效的班級名稱與大於 0 的人數！');
+                return;
+            }
+            
+            classConfig[className] = count;
+            localStorage.setItem('customClassConfig', JSON.stringify(classConfig));
+            
+            document.getElementById('inputClassName').value = '';
+            document.getElementById('inputStudentCount').value = '';
+            
+            updateClassListDisplay();
+            renderData(); // 重新渲染作業資料，確保未交人數計算正確
+        });
+
+        // ==========================================
+        // 6. 自訂相機控制邏輯 (含前後鏡頭切換與高解析度)
         // ==========================================
         function initScanner() {
             html5QrCode = new Html5Qrcode("reader");
         }
 
-        // 預設先使用後鏡頭 (environment)，前鏡頭代號是 (user)
         let currentFacingMode = "environment"; 
 
-        function startScanner() {
-            // fps: 30 保持高靈敏度掃描
-            const config = { fps: 30 }; 
-            const cameraConfig = { facingMode: currentFacingMode };
+function startScanner() {
+            // 修正：將高解析度要求 (videoConstraints) 移到 config 裡面
+            const config = { 
+                fps: 30,
+                qrbox: { width: 250, height: 250 },
+                videoConstraints: {
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
+                }
+            }; 
+            
+            // 修正：這裡必須保持嚴格的 1 個 key (只有 facingMode)
+            const cameraConfig = { 
+                facingMode: currentFacingMode
+            };
             
             html5QrCode.start(cameraConfig, config, onScanSuccess)
             .then(() => {
@@ -245,19 +323,17 @@
                 alert("無法開啟相機！\n系統回報錯誤：" + err);
             });
         }
-
         document.getElementById('startBtn').addEventListener('click', startScanner);
 
-        // 點擊「切換前後鏡頭」按鈕的邏輯
         document.getElementById('switchBtn').addEventListener('click', () => {
             html5QrCode.stop().then(() => {
                 if (currentFacingMode === "environment") {
-                    currentFacingMode = "user"; // 換前鏡頭
+                    currentFacingMode = "user"; 
                 } else {
-                    currentFacingMode = "environment"; // 換後鏡頭
+                    currentFacingMode = "environment"; 
                 }
                 startScanner();
-            });
+            }).catch(err => console.log("切換鏡頭失敗", err));
         });
 
         document.getElementById('stopBtn').addEventListener('click', () => {
@@ -265,16 +341,15 @@
                 document.getElementById('startBtn').style.display = 'block';
                 document.getElementById('switchBtn').style.display = 'none'; 
                 document.getElementById('stopBtn').style.display = 'none';
-            });
+            }).catch(err => console.log("關閉相機失敗", err));
         });
 
         // ==========================================
-        // 6. 掃描邏輯與畫面渲染
+        // 7. 掃描邏輯與畫面渲染
         // ==========================================
         function onScanSuccess(decodedText) {
             const currentTime = new Date().getTime();
 
-            // 防重複：1.5 秒內不重複掃描同一個條碼
             if (decodedText === lastScannedText && (currentTime - lastScannedTime) < 1500) {
                 return;
             }
@@ -283,9 +358,11 @@
             lastScannedTime = currentTime;
 
             const parts = decodedText.split('-');
-            if (parts.length !== 3) return; 
+            if (parts.length !== 3) {
+                showToast('⚠️ 條碼格式錯誤', 'duplicate');
+                return; 
+            }
 
-            // 科目英文代號與防亂碼對照表
             const subjectMap = {
                 "BK": "聯絡簿",
                 "CH": "國語",
@@ -293,14 +370,12 @@
                 "SO": "社會",
                 "SC": "自然",
                 "EN": "英文",
-                "oa?": "聯絡簿" // 解決你之前遇到的亂碼問題
+                "oa?": "聯絡簿" 
             };
 
             const className = parts[0];
             const rawSubject = parts[1];
-            
             const subject = subjectMap[rawSubject] || rawSubject; 
-            
             const seatNumber = parseInt(parts[2], 10);
             
             if(isNaN(seatNumber)) return; 
@@ -333,16 +408,24 @@
                 
                 for (const [category, seatNumbers] of Object.entries(categories)) {
                     const className = category.split('-')[0];
-                    const totalStudents = classConfig[className] || 30; 
+                    
+                    // 動態抓取設定的人數，如果沒設定，就預設用掃描到的最大座號，或是 30 作為保底
+                    let totalStudents = classConfig[className];
+                    if (!totalStudents) {
+                        totalStudents = Math.max(30, ...seatNumbers); 
+                    }
 
                     let missing = [];
                     for(let i = 1; i <= totalStudents; i++) {
                         if(!seatNumbers.includes(i)) missing.push(i);
                     }
 
+                    // 如果沒設定班級，給個小提示
+                    const warningHtml = !classConfig[className] ? `<br><span style="color:#e67e22; font-size:13px; font-weight:normal;">(未設定總人數，暫以 ${totalStudents} 人計算)</span>` : '';
+
                     dateHtml += `
                         <div class="subject-section">
-                            <h4>${category}</h4>
+                            <h4>${category} ${warningHtml}</h4>
                             <p><strong>已交座號 (${seatNumbers.length}/${totalStudents}人)：</strong><br> ${seatNumbers.join(', ')}</p>
                             <p class="missing-list">未交座號 (${missing.length}人)：<br> ${missing.join(', ')}</p>
                         </div>
@@ -354,13 +437,13 @@
         }
 
         // ==========================================
-        // 7. 系統初始化
+        // 8. 系統初始化
         // ==========================================
+        updateClassListDisplay(); // 先畫出設定的班級
         loadData();
         requestWakeLock();
         initScanner();
 
     </script>
 </body>
-
 </html>
