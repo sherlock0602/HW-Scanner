@@ -133,12 +133,12 @@
         <div id="classListDisplay"></div>
     </div>
 
-    <div class="camera-controls">
-        <button id="startBtn" class="btn btn-start">開啟相機掃描</button>
-        <button id="switchBtn" class="btn btn-switch" style="display: none;">切換前後鏡頭</button>
-        <button id="stopBtn" class="btn btn-stop">暫停相機</button>
+<div class="camera-controls">
+        <select id="cameraSelect" style="flex: 2; padding: 10px; border-radius: 8px; font-size: 16px; border: 1px solid #ccc; display: none;"></select>
+        
+        <button id="startBtn" class="btn btn-start" style="flex: 1;">開啟相機</button>
+        <button id="stopBtn" class="btn btn-stop" style="flex: 1;">暫停</button>
     </div>
-
     <div class="scanner-container">
         <div id="reader"></div>
         <div id="scanToast" class="scan-toast"></div>
@@ -287,53 +287,44 @@
             updateClassListDisplay();
             renderData(); // 重新渲染作業資料，確保未交人數計算正確
         });
-
-        // ==========================================
-        // 6. 自訂相機控制邏輯 (支援多鏡頭精準切換)
+// ==========================================
+        // 6. 終極相機控制邏輯 (下拉選單手動選擇)
         // ==========================================
         function initScanner() {
             html5QrCode = new Html5Qrcode("reader");
-        }
-
-        let availableCameras = [];
-        let currentCameraIndex = 0;
-        let isUsingFacingModeFallback = false;
-        let currentFacingMode = "environment";
-
-        function startScanner() {
-            // 嘗試取得裝置上所有的實體相機鏡頭
+            
+            // 網頁載入時，立刻請求相機權限並抓取鏡頭清單
             Html5Qrcode.getCameras().then(devices => {
                 if (devices && devices.length > 0) {
-                    availableCameras = devices;
-                    isUsingFacingModeFallback = false;
+                    const select = document.getElementById('cameraSelect');
+                    select.style.display = 'block'; // 顯示下拉選單
                     
-                    // 第一次啟動時，自動尋找名稱中包含 "back"、"後" 或 "environment" 的鏡頭
-                    if (currentCameraIndex === 0) {
-                        const backCamIndex = devices.findIndex(c => 
-                            c.label.toLowerCase().includes('back') || 
-                            c.label.toLowerCase().includes('後') ||
-                            c.label.toLowerCase().includes('environment')
-                        );
-                        // 如果有找到後置鏡頭，就將它設為預設
-                        if (backCamIndex !== -1) {
-                            currentCameraIndex = backCamIndex;
+                    devices.forEach((camera, index) => {
+                        const option = document.createElement('option');
+                        option.value = camera.id;
+                        // 處理如果瀏覽器因為安全限制不給名字的狀況
+                        option.text = camera.label || `未命名鏡頭 ${index + 1}`; 
+                        
+                        // 嘗試自動選擇後鏡頭 (如果名字裡有這些關鍵字)
+                        const camName = option.text.toLowerCase();
+                        if (camName.includes('back') || camName.includes('後') || camName.includes('environment')) {
+                            option.selected = true; 
                         }
-                    }
-                    startWithCameraId(availableCameras[currentCameraIndex].id);
-                } else {
-                    // 如果抓不到設備列表，退回使用基本模式
-                    isUsingFacingModeFallback = true;
-                    startWithFacingMode(currentFacingMode);
+                        
+                        select.appendChild(option);
+                    });
                 }
             }).catch(err => {
-                console.log("無法取得相機列表，改用基本模式", err);
-                isUsingFacingModeFallback = true;
-                startWithFacingMode(currentFacingMode);
+                console.warn("無法預先抓取相機清單，可能受到瀏覽器安全限制：", err);
             });
         }
 
-        function getScannerConfig() {
-            return {
+        function startScanner() {
+            const select = document.getElementById('cameraSelect');
+            const selectedCameraId = select.value;
+
+            // 相機參數：要求高解析度與對焦框
+            const config = {
                 fps: 30,
                 qrbox: { width: 250, height: 250 },
                 videoConstraints: {
@@ -341,53 +332,35 @@
                     height: { ideal: 1080 }
                 }
             };
-        }
 
-        function startWithCameraId(cameraId) {
-            html5QrCode.start(cameraId, getScannerConfig(), onScanSuccess)
-                .then(onCameraStartSuccess)
-                .catch(err => alert("無法開啟相機！\n錯誤：" + err));
-        }
+            // 如果有選單選中 ID，就用 ID；如果沒有，用終極強制語法 { exact: "environment" }
+            const cameraConfig = selectedCameraId 
+                ? selectedCameraId 
+                : { facingMode: { exact: "environment" } };
 
-        function startWithFacingMode(mode) {
-            html5QrCode.start({ facingMode: mode }, getScannerConfig(), onScanSuccess)
-                .then(onCameraStartSuccess)
-                .catch(err => alert("無法開啟相機！\n錯誤：" + err));
-        }
-
-        function onCameraStartSuccess() {
-            document.getElementById('startBtn').style.display = 'none';
-            // 只有當找到超過 1 顆鏡頭，或使用基本模式時，才顯示切換按鈕
-            if (availableCameras.length > 1 || isUsingFacingModeFallback) {
-                document.getElementById('switchBtn').style.display = 'block'; 
-            }
-            document.getElementById('stopBtn').style.display = 'block';
+            html5QrCode.start(cameraConfig, config, onScanSuccess)
+                .then(() => {
+                    document.getElementById('startBtn').style.display = 'none';
+                    document.getElementById('stopBtn').style.display = 'block';
+                    select.disabled = true; // 掃描時鎖定下拉選單
+                })
+                .catch((err) => {
+                    console.log("嘗試開啟失敗，退回基本模式：", err);
+                    // 如果被強制語法拒絕，退回最普通的環境模式
+                    html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
+                        .catch(err2 => alert("開啟相機失敗，請確認是否給予相機權限！\n" + err2));
+                });
         }
 
         document.getElementById('startBtn').addEventListener('click', startScanner);
 
-        // 切換鏡頭邏輯：按順序輪播所有抓取到的實體鏡頭
-        document.getElementById('switchBtn').addEventListener('click', () => {
-            html5QrCode.stop().then(() => {
-                if (isUsingFacingModeFallback) {
-                    currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
-                    startWithFacingMode(currentFacingMode);
-                } else {
-                    currentCameraIndex = (currentCameraIndex + 1) % availableCameras.length;
-                    startWithCameraId(availableCameras[currentCameraIndex].id);
-                }
-            }).catch(err => console.log("切換鏡頭失敗", err));
-        });
-
         document.getElementById('stopBtn').addEventListener('click', () => {
             html5QrCode.stop().then(() => {
                 document.getElementById('startBtn').style.display = 'block';
-                document.getElementById('switchBtn').style.display = 'none'; 
                 document.getElementById('stopBtn').style.display = 'none';
+                document.getElementById('cameraSelect').disabled = false; // 解除鎖定
             }).catch(err => console.log("關閉相機失敗", err));
-        });
-
-        // ==========================================
+        });        // ==========================================
         // 7. 掃描邏輯與畫面渲染
         // ==========================================
         function onScanSuccess(decodedText) {
