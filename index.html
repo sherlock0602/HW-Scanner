@@ -220,25 +220,21 @@
             html5QrCode = new Html5Qrcode("reader");
         }
 
-        document.getElementById('startBtn').addEventListener('click', () => {
-            // 升級 1：移除 qrbox 參數，這樣就不會有方框限制，全畫面都可以抓取！
-            // 升級 2：提升 fps 為 30，增加掃描靈敏度
+    document.getElementById('startBtn').addEventListener('click', () => {
+            // 保持 30 fps 高靈敏度
             const config = { fps: 30 }; 
             
-            // 升級 3：向手機/電腦請求高畫質 (理想是 1920x1080 解析度)
-        const cameraConstraints = {
-    facingMode: { ideal: "environment" }, // 加上 { ideal: ... } 代表優先使用後鏡頭，沒有就算了
-    width: { ideal: 1920 },    
-    height: { ideal: 1080 }    
-};
+            // 【關鍵修正】：移除強制高畫質，改回最單純的「優先使用後鏡頭」
+            const cameraConfig = { facingMode: "environment" };
             
-            html5QrCode.start(cameraConstraints, config, onScanSuccess)
+            html5QrCode.start(cameraConfig, config, onScanSuccess)
             .then(() => {
                 document.getElementById('startBtn').style.display = 'none';
                 document.getElementById('stopBtn').style.display = 'block';
             })
             .catch((err) => {
-                alert("無法開啟相機，請確認是否已給予瀏覽器相機權限！");
+                // 【關鍵修正】：把系統真實的錯誤原因顯示出來！
+                alert("無法開啟相機！\n系統回報錯誤：" + err);
             });
         });
 
