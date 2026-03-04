@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>鏡頭選擇與拍照測試</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; text-align: center; background-color: #f0f2f5; }
+        .container { max-width: 500px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        select, button { padding: 12px; font-size: 16px; margin: 10px 0; width: 100%; border-radius: 5px; border: 1px solid #ccc; }
+        button { background-color: #3498db; color: white; border: none; cursor: pointer; font-weight: bold; }
+        button:hover { background-color: #2980b9; }
+        button:disabled { background-color: #95a5a6; cursor: not-allowed; }
+        video { width: 100%; border-radius: 8px; background-color: #000; margin-bottom: 10px; }
+        img { width: 100%; border-radius: 8px; border: 2px solid #ddd; margin-top: 10px; }
+        #canvas { display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>📸 鏡頭大點名</h2>
+        
+        <select id="cameraSelect">
+            <option value="">正在讀取相機清單 (請允許權限)...</option>
+        </select>
+        
+        <button id="startBtn">開啟 / 切換所選鏡頭</button>
+        
+        <video id="video" autoplay playsinline></video>
+        
+        <button id="snapBtn" disabled>喀嚓！拍照</button>
+
+        <canvas id="canvas"></canvas>
+
+        <div id="photoContainer" style="display: none;">
+            <h3>預覽照片：</h3>
+            <img id="photo" alt="你的照片會顯示在這裡" />
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const cameraSelect = document.getElementById('cameraSelect');
+        const startBtn = document.getElementById('startBtn');
+        const snapBtn = document.getElementById('snapBtn');
+        const canvas = document.getElementById('canvas');
+        const photo = document.getElementById('photo');
+        const photoContainer = document.getElementById('photoContainer');
+        
+        let currentStream = null;
+
+        // 取得設備上所有的鏡頭清單
+        async function getCameras() {
+            try {
+                // 必須先要一次基本權限，iOS 才會給我們「真正的鏡頭名稱」
+                await navigator.mediaDevices.getUserMedia({ video: true });
+                
+                // 列出所有媒體設備
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                
+                // 過濾出「影像輸入」(也就是鏡頭)
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                
+                // 清空選單並放入抓到的鏡頭
+                cameraSelect.innerHTML = '';
+                videoDevices.forEach((device, index) => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    // 如果設備沒有名字，就給它一個編號
+                    option.text = device.label || `未命名鏡頭 ${index + 1}`;
+                    cameraSelect.appendChild(option);
+                });
+            } catch (err) {
+                alert("無法取得相機權限：" + err.message);
+                cameraSelect.innerHTML = '<option value="">無法讀取鏡頭</option>';
+            }
+        }
+
+        // 啟動使用者選取的那個鏡頭
+        async function startSelectedCamera() {
+            // 如果目前有鏡頭開著，先把它關掉
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+            }
+
+            const deviceId = cameraSelect.value;
+            if (!deviceId) return;
+
+            // 嚴格指定要開啟的鏡頭 ID
+            const constraints = {
+                video: { deviceId: { exact: deviceId } }
+            };
+
+            try {
+                currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = currentStream;
+                snapBtn.disabled = false; // 鏡頭成功開啟後，解鎖拍照按鈕
+            } catch (err) {
+                alert("開啟這個鏡頭失敗：" + err.message);
+            }
+        }
+
+        // 拍照功能
+        snapBtn.addEventListener('click', () => {
+            const context = canvas.getContext('2d');
+            
+            // 把畫布大小設定得跟影片當下解析度一樣
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            // 把影片的「這一瞬間」畫到畫布上
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // 把畫布轉換成圖片網址並顯示出來
+            photo.src = canvas.toDataURL('image/png');
+            photoContainer.style.display = 'block';
+        });
+
+        // 綁定按鈕事件
+        startBtn.addEventListener('click', startSelectedCamera);
+
+        // 網頁一載入就先去抓鏡頭清單
+        getCameras();
+    </script>
+</body>
+</html>
