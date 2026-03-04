@@ -15,8 +15,22 @@
         }
         h2 { text-align: center; color: #333; }
         
-        /* 自訂相機按鈕樣式 */
+        /* 自訂相機按鈕與選單樣式 */
         .camera-controls { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+        
+        .camera-select {
+            flex-basis: 100%;
+            padding: 12px;
+            font-size: 16px;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            background-color: white;
+            font-family: inherit;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+            color: #333;
+        }
+        .camera-select:disabled { background-color: #eee; color: #999; }
+
         .btn {
             flex: 1 1 calc(50% - 10px);
             padding: 12px;
@@ -32,10 +46,8 @@
         }
         .btn-start { background-color: #2ecc71; flex-basis: 100%; }
         .btn-start:hover { background-color: #27ae60; }
-        .btn-switch { background-color: #f39c12; }
-        .btn-switch:hover { background-color: #e67e22; }
-        .btn-stop { background-color: #95a5a6; display: none; }
-        .btn-stop:hover { background-color: #7f8c8d; }
+        .btn-stop { background-color: #e74c3c; display: none; flex-basis: 100%; } 
+        .btn-stop:hover { background-color: #c0392b; }
         
         /* 音效按鈕樣式 */
         .btn-sound { background-color: #8e44ad; flex-basis: 100%; }
@@ -120,8 +132,11 @@
     <div class="camera-controls">
         <button id="soundToggleBtn" class="btn btn-sound">🔊 掃描音效：開啟</button>
         
+        <select id="cameraSelect" class="camera-select">
+            <option value="">正在讀取相機清單...</option>
+        </select>
+        
         <button id="startBtn" class="btn btn-start">開啟相機掃描</button>
-        <button id="switchBtn" class="btn btn-switch" style="display: none;">切換前後鏡頭</button>
         <button id="stopBtn" class="btn btn-stop" style="display: none;">暫停相機</button>
     </div>
     
@@ -146,7 +161,7 @@
         let toastTimeout; 
 
         // 音效相關變數
-        let isSoundEnabled = localStorage.getItem('soundEnabled') !== 'false'; // 預設為開啟
+        let isSoundEnabled = localStorage.getItem('soundEnabled') !== 'false'; 
         let audioCtx;
 
         function getTodayDate() {
@@ -158,7 +173,6 @@
         // ==========================================
         // 2. 音效產生器與控制 (Web Audio API)
         // ==========================================
-        // 初始化音效 (iPad Safari 需要透過點擊事件來解鎖音效權限)
         function initAudio() {
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -173,11 +187,11 @@
             const oscillator = audioCtx.createOscillator();
             const gainNode = audioCtx.createGain();
             
-            oscillator.type = 'sine'; // 乾淨的正弦波聲音
-            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // 頻率，880Hz 比較清脆
+            oscillator.type = 'sine'; 
+            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); 
             
-            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); // 音量
-            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1); // 聲音短促淡出
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); 
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1); 
             
             oscillator.connect(gainNode);
             gainNode.connect(audioCtx.destination);
@@ -186,7 +200,6 @@
             oscillator.stop(audioCtx.currentTime + 0.1);
         }
 
-        // 更新音效按鈕外觀
         const soundBtn = document.getElementById('soundToggleBtn');
         function updateSoundBtnUI() {
             if (isSoundEnabled) {
@@ -199,11 +212,11 @@
         }
         
         soundBtn.addEventListener('click', () => {
-            initAudio(); // 確保解鎖 iOS 音效權限
+            initAudio(); 
             isSoundEnabled = !isSoundEnabled;
             localStorage.setItem('soundEnabled', isSoundEnabled);
             updateSoundBtnUI();
-            if (isSoundEnabled) playBeep(); // 開啟時測試響一聲
+            if (isSoundEnabled) playBeep(); 
         });
 
         // ==========================================
@@ -289,15 +302,52 @@
         });
 
         // ==========================================
-        // 7. 自訂相機控制邏輯 (移除解析度限制版 + 動態掃描框)
+        // 7. 自訂相機控制邏輯 (下拉選單完美整合版)
         // ==========================================
-        function initScanner() { html5QrCode = new Html5Qrcode("reader"); }
-        let currentFacingMode = "environment"; 
+        function initScanner() { 
+            html5QrCode = new Html5Qrcode("reader"); 
+            loadCameras(); // 網頁載入時嘗試先抓取鏡頭清單
+        }
+
+        // 讀取相機硬體清單
+        async function loadCameras() {
+            try {
+                const devices = await Html5Qrcode.getCameras();
+                populateCameraSelect(devices);
+            } catch (err) {
+                // 如果 Safari 阻擋初始讀取，會顯示提示，等使用者按「開啟相機」時再要一次權限
+                document.getElementById('cameraSelect').innerHTML = '<option value="">請先點擊「開啟相機」進行授權</option>';
+            }
+        }
+
+        // 將抓到的鏡頭塞入下拉選單
+        function populateCameraSelect(devices) {
+            const cameraSelect = document.getElementById('cameraSelect');
+            if (devices && devices.length) {
+                cameraSelect.innerHTML = '';
+                let defaultIndex = 0;
+                devices.forEach((device, index) => {
+                    const option = document.createElement('option');
+                    option.value = device.id;
+                    option.text = device.label || `未命名鏡頭 ${index + 1}`;
+                    cameraSelect.appendChild(option);
+                    
+                    // 嘗試自動辨識並選擇後置鏡頭
+                    const labelLower = option.text.toLowerCase();
+                    if (labelLower.includes('back') || labelLower.includes('rear') || labelLower.includes('後')) {
+                        defaultIndex = index;
+                    }
+                });
+                cameraSelect.selectedIndex = defaultIndex;
+            }
+        }
 
         function startScanner() {
-            let cameraConfig;
-            if (currentFacingMode === "environment") cameraConfig = { facingMode: { exact: "environment" } };
-            else cameraConfig = { facingMode: "user" };
+            const cameraId = document.getElementById('cameraSelect').value;
+            if (!cameraId) {
+                alert("請先選擇一個鏡頭！");
+                return;
+            }
 
             // 讓掃描框動態適應畫面大小，佔比約 85%
             const simpleConfig = { 
@@ -310,46 +360,54 @@
             }; 
 
             try {
-                html5QrCode.start(cameraConfig, simpleConfig, onScanSuccess)
-                .then(() => { showCameraButtons(); })
+                // 直接傳入 Device ID，強制點名開啟特定鏡頭
+                html5QrCode.start(cameraId, simpleConfig, onScanSuccess)
+                .then(() => { 
+                    showCameraButtons(); 
+                })
                 .catch((err) => {
-                    console.warn("強制指定鏡頭失敗，啟動備用模式：", err);
-                    const fallbackConfig = { facingMode: currentFacingMode };
-                    html5QrCode.start(fallbackConfig, simpleConfig, onScanSuccess)
-                    .then(() => { showCameraButtons(); })
-                    .catch(err2 => { alert("無法開啟相機，請確認設備權限！\n錯誤：" + err2); });
+                    alert("無法開啟這個鏡頭，可能被 Safari 阻擋或佔用！\n錯誤：" + err);
                 });
-            } catch (error) { alert("啟動發生錯誤：" + error); }
+            } catch (error) { 
+                alert("啟動發生錯誤：" + error); 
+            }
         }
 
         function showCameraButtons() {
             document.getElementById('startBtn').style.display = 'none';
-            document.getElementById('soundToggleBtn').style.display = 'none'; // 掃描時隱藏音效設定按鈕節省空間
-            document.getElementById('switchBtn').style.display = 'block'; 
+            document.getElementById('soundToggleBtn').style.display = 'none'; 
+            document.getElementById('cameraSelect').disabled = true; // 掃描時鎖住下拉選單防誤觸
             document.getElementById('stopBtn').style.display = 'block';
         }
 
-        document.getElementById('startBtn').addEventListener('click', () => {
+        document.getElementById('startBtn').addEventListener('click', async () => {
             initAudio(); // 確保解鎖音效權限
-            startScanner();
-        });
+            
+            const cameraSelect = document.getElementById('cameraSelect');
+            
+            // 萬一選單還是空的(代表還沒拿到相機權限)，強制要求一次
+            if (!cameraSelect.value) {
+                try {
+                    const devices = await Html5Qrcode.getCameras();
+                    populateCameraSelect(devices);
+                    if (!cameraSelect.value) {
+                        alert("找不到可用的鏡頭硬體！");
+                        return;
+                    }
+                } catch (err) {
+                    alert("無法獲取相機權限，請確認是否已允許 Safari 使用相機！\n錯誤: " + err);
+                    return;
+                }
+            }
 
-        document.getElementById('switchBtn').addEventListener('click', () => {
-            document.getElementById('switchBtn').disabled = true; 
-            html5QrCode.stop().then(() => {
-                currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
-                setTimeout(() => {
-                    startScanner();
-                    document.getElementById('switchBtn').disabled = false;
-                }, 300);
-            }).catch(err => { console.log("切換鏡頭失敗", err); document.getElementById('switchBtn').disabled = false; });
+            startScanner();
         });
 
         document.getElementById('stopBtn').addEventListener('click', () => {
             html5QrCode.stop().then(() => {
                 document.getElementById('startBtn').style.display = 'block';
-                document.getElementById('soundToggleBtn').style.display = 'block'; // 停止掃描時顯示音效設定
-                document.getElementById('switchBtn').style.display = 'none'; 
+                document.getElementById('soundToggleBtn').style.display = 'block'; 
+                document.getElementById('cameraSelect').disabled = false; // 暫停時解鎖下拉選單
                 document.getElementById('stopBtn').style.display = 'none';
             }).catch(err => console.log("關閉相機失敗", err));
         });
@@ -387,7 +445,6 @@
                 saveData(); 
                 renderData(); 
                 
-                // 【觸發音效】
                 playBeep();
                 showToast(`✅ 成功：${className} ${subject} ${seatNumber}號`, 'success');
             } else {
