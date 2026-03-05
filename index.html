@@ -156,7 +156,7 @@
             const gainNode = audioCtx.createGain();
             oscillator.type = type; 
             oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime + startTimeOffset); 
-            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime + startTimeOffset); 
+            gainNode.gain.setValueAtTime(0.45, audioCtx.currentTime + startTimeOffset); 
             gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + startTimeOffset + duration); 
             oscillator.connect(gainNode);
             gainNode.connect(audioCtx.destination);
@@ -499,3 +499,4 @@
     </script>
 </body>
 </html>
+
